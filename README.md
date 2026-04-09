@@ -1,93 +1,176 @@
 # Vault — A Domain-Atomized LLM Wiki
 
-A reference implementation of [Andrej Karpathy's LLM Wiki pattern](https://gist.github.com/karpathy/3ae50c94fe5c72884137a38d5b81d5ff), extended with domain atomization, token-cost optimizations, and structural lint. The human curates sources; the LLM maintainer summarizes, cross-references, files, and lints.
+A personal knowledge wiki built on [Andrej Karpathy's LLM Wiki pattern](https://gist.github.com/karpathy/3ae50c94fe5c72884137a38d5b81d5ff), reorganized around one question: **how do you keep per-session token cost flat as the wiki grows?**
 
-This repo is a working **example layout**. The portable specification lives in [`PROGRAM.md`](PROGRAM.md) — a self-contained LLM prompt spec you can drop into any harness. Use this repo to see the structure in practice; use `PROGRAM.md` to actually adopt it. For the agent-facing schema, see [`CLAUDE.md`](CLAUDE.md). For architectural rationale, see [`SPEC.md`](SPEC.md).
+A flat LLM wiki works beautifully up to ~30-60 pages. Past that, per-session read cost grows roughly linearly with total page count — a 6-source ingest on a flat ~130-page wiki spends ~60% of its tokens reading existing state before writing anything. This layout drops per-ingest read cost by **~65-71%** at that scale by making cost scale with the **touched domain** rather than the whole wiki. The savings compound as the wiki grows.
 
-## Why
+**This repo is a worked example.** The portable specification is [`PROGRAM.md`](PROGRAM.md) — a self-contained LLM prompt spec that takes an empty directory to a running vault. Use `PROGRAM.md` to adopt the pattern; use this repo to see what the result looks like.
 
-Canonical LLM Wiki works at ~30-60 pages. Past that, per-session read cost grows roughly linearly with total page count — a 6-source ingest on a flat ~130-page wiki spends ~60% of its tokens reading existing state before writing anything. This layout drops per-ingest read cost by **~65-71%** at that scale by shifting cost from "scales with total wiki size" to "scales with the touched domain's size." Savings compound as the wiki grows.
+---
 
-## The Core Pattern
+## Token optimizations in this layout
 
-- **Domain partitioning.** `wiki/` is physically split by domain. Each domain owns its `_manifest.md`, its `{sources,entities,concepts,analyses}/` subdirs, and its qmd search collection. Cross-domain wikilinks resolve by slug and are cheap; cross-domain *ingests/queries* require explicit opt-in.
-- **Manifest-first reading.** Each `_manifest.md` holds scope, key facts, open questions, cross-domain links, and an auto-generated registry of every page's one-sentence summary. The prose region is budgeted at ≤3,000 tokens. Classification reads only the `summary:` YAML line — full manifests load *after* a domain is chosen.
-- **Progressive disclosure.** Three tiers: search results + registry summaries (discovery), section headings (structure), specific section (edit). Full-page reads happen only for pages being actively edited.
-- **Precomputed `xrefs.json`.** Auto-generated map of inbound/outbound links, tags, and update dates. Look up connections here instead of grepping.
-- **Page-level summaries.** Every page carries a mandatory `summary:` frontmatter field that feeds the manifest registry.
-- **Log compaction.** `log.md` is reverse-chronological; entries older than 30 days move to `log-archive-YYYY.md` once the file exceeds ~300 lines.
-- **Source verification tiers.** Every source page declares `*Verified against PDF*`, `*Verified against source code*`, or `*Unverified — fetched via WebFetch*`. WebFetch and social media fabricate.
-- **No mental math.** Any number that enters the wiki is computed by Python/bash first, never by the LLM.
-- **Phased batch ingest.** Parallel agents create source pages; a single serial pass updates shared files (manifest, log, registries).
-- **Skip criteria.** Duplicate / derivative / SEO spam / too thin / too broad sources get archived with a log entry, not a wiki page.
+Each of these is a separate lever. They compose.
 
-The three operations — `/ingest`, `/query`, `/health` — all default to single-domain routing. See [`CLAUDE.md`](CLAUDE.md) and [`SPEC.md`](SPEC.md) for the full contracts.
+### Currently implemented
 
-## Directory Layout
+- **Domain partitioning.** `wiki/` is physically split by domain (`wiki/<domain-a>/`, `wiki/<domain-b>/`, …). Each domain owns its own `_manifest.md`, its four subdirectories (`sources`, `entities`, `concepts`, `analyses`), and its search collection. Single-domain operations are the default; cross-domain is opt-in. A page in one domain linking `[[foo]]` to a page in another resolves automatically — slugs are global, but operation scope is not.
+
+- **Manifest-first reading.** Each `_manifest.md` holds `Scope`, `Key facts`, `Open questions`, `Cross-domain links`, and an auto-generated registry listing every page's one-sentence summary. Reading the manifest alone is usually enough to decide what to search and what to load. Prose is budgeted at ≤ 3,000 tokens; exceeding the budget flags the domain as a split candidate.
+
+- **Classification via `summary:` only.** During ingest and query, classification reads just the `summary:` YAML line of each manifest — **not** the full manifests. Loading a full wrong manifest wastes the entire context-savings point of the architecture.
+
+- **Progressive disclosure (three tiers).**
+  1. **Discovery** — search results + manifest registry + frontmatter `summary` fields. Most pages stop here.
+  2. **Structure** — section headings + the first line of each section.
+  3. **Full content** — only the specific section being edited.
+  Full-page reads happen only for pages actively being edited.
+
+- **Precomputed `xrefs.json`.** Auto-generated wikilink graph with every page's inbound and outbound links, tags, and updated date. Use this instead of grepping to answer "what connects to X".
+
+- **Mandatory page-level `summary:`.** Every page carries a 1-2 sentence abstract that feeds the manifest registry. It is read far more often than the body.
+
+- **Log compaction.** `log.md` is reverse-chronological (newest at top) and archives entries older than 30 days to `log-archive-YYYY.md` once it exceeds ~300 lines. Session-relevant history stays visible; long tail moves out of the hot read path.
+
+- **Git-aware session start.** Returning sessions check `git log --oneline -10` and the diff since last time. Only pages that changed **and** are touched by the current task get re-read.
+
+- **Phased batch ingest.** Parallel agents create source/concept/entity pages inside a single domain; a single serial pass updates shared files (manifest, log, registries). Last-writer-wins hazards on `_manifest.md` and `log.md` are structurally avoided instead of hoped against.
+
+- **Verification discipline that prevents re-ingestion.** Every source page declares a tier (`*Verified against PDF*`, `*Verified against source code*`, `*Unverified — fetched via WebFetch*`, etc.). Low-trust pages get re-verified on demand; high-trust pages do not need to be re-read. **Never mental math** — any number that enters the wiki is computed by Python/bash first, not by the LLM.
+
+- **Skip criteria.** Duplicate / derivative / SEO spam / too-thin / too-broad sources are archived with a log entry, not a wiki page. The wiki stays dense.
+
+- **Structural lint as a read-cost tool.** `check-wikilinks.py`, `check-frontmatter-domain.py`, and `detect-domain-divergence.py` catch drift mechanically. Drift that becomes invisible becomes expensive — a broken wikilink survives in the graph, a mismatched `domain:` means a page gets re-read on every cross-domain op, a bloated manifest silently grows past its budget.
+
+### Planned (see Roadmap below)
+
+- **Derived analytics** — god nodes, cross-domain bridges, cluster summaries, stale load-bearing pages, suggested questions — computed from `xrefs.json` into each manifest (Phase 1)
+- **Always-on hooks** — PreToolUse + SessionStart + git hooks that keep manifests, `xrefs.json`, and analytics current without manual invocation (Phase 1)
+- **File watcher** — debounced rebuilds on `wiki/` changes (Phase 2)
+- **Multimodal pre-extraction** — LLM-vision pass on `raw/attachments/` images so figures become text-searchable (Phase 2)
+- **Materialized views** — per-god-node aggregation files that answer dense in-domain queries with one read instead of fifteen (Phase 3)
+
+---
+
+## Getting started
+
+**Initialization is done through [`PROGRAM.md`](PROGRAM.md), not by cloning this repo.** This repo is a reference example of what `PROGRAM.md` produces.
+
+`PROGRAM.md` is a self-contained, harness-agnostic build program. Hand it to an LLM in any harness and it will:
+
+1. Create the directory skeleton (`raw/`, `wiki/`, `scripts/`, `.gitignore`)
+2. Write the global navigation files (`index.md`, `overview.md`, `log.md`, `xrefs.json`)
+3. Ask you to name the first two domains
+4. Write the manifest skeletons
+5. Install the seven scripts (inlined verbatim in `PROGRAM.md` — no external downloads)
+6. Verify the build with the structural lints
+7. `git init` and make the first commit
+
+After bootstrap, `PROGRAM.md` also specifies the three day-to-day operations (`ingest`, `query`, `health`), the page conventions, the context-cost rules, the invariants, and the domain evolution workflow (split / merge). A single LLM reading `PROGRAM.md` alone has everything it needs to build and run the wiki.
+
+### If you want to fork this repo directly
+
+Forking works too, but you are starting from a specific harness's conventions (Claude Code) rather than from the portable spec. Expect to:
+
+1. Delete or rename the two placeholder domains in `wiki/`
+2. Replace the manifest `summary:` lines with your own
+3. Adjust `.claude/skills/` if you are using Claude Code, or delete it if you are not
+4. Keep the lint green — `python3 scripts/check-wikilinks.py` and `python3 scripts/check-frontmatter-domain.py` should both return `OK`
+
+---
+
+## Roadmap
+
+The token optimizations listed above are what's currently implemented. Three planned phases extend them, ordered roughly by payoff-over-effort.
+
+### Phase 1 — Derived analytics + always-on hooks
+
+The biggest remaining gap is that the wiki computes nothing *about itself*. `xrefs.json` has every edge, but no script yet extracts the high-value signals from it. Phase 1 closes that and makes the maintenance layer self-triggering.
+
+- **`scripts/build-analytics.py`** — consumes `xrefs.json` and writes a derived analytics block into each domain manifest (or a sibling `_analytics.md`) containing:
+  - **God nodes** — top pages by inbound-link degree (the load-bearing pages you would protect from breaking)
+  - **Cross-domain bridges** — pages with the most cross-domain wikilinks (surprising connections the wiki has learned)
+  - **Cluster summaries** — Louvain community detection over the wikilink graph, top clusters per domain with their largest members
+  - **Recently updated** — pages whose `updated:` frontmatter is within the last 14 days
+  - **Stale load-bearing pages** — high-degree pages whose `updated:` is older than 90 days (potential rot)
+  - **Suggested questions** — templated from the god nodes; gives fresh sessions a discoverability layer above the manifest
+- **PreToolUse + SessionStart hooks** — deterministic reminders that fire before `Glob`/`Grep` calls, injecting *"prefer scoped search over raw grep; manifests are the entry point"*. Removes the "forgot to read the manifest first" failure mode that soft CLAUDE.md instructions do not catch.
+- **Git post-commit / post-checkout hooks** — auto-rebuild registries, `xrefs.json`, and the new analytics block on every commit. `qmd update` runs in the hook; `qmd embed` is intentionally **not** in the hook (memory-heavy, foreground-only per a documented rule) but the hook emits a reminder on stdout when embed is due.
+
+The three items compose: the analytics block lives in the manifest, the hooks prefetch the manifest, the git hooks keep both current.
+
+### Phase 2 — Auto-sync + multimodal pre-extraction
+
+Once Phase 1 is in place, two ingest-side improvements compound on it:
+
+- **`scripts/watch-wiki.sh`** — long-running `inotifywait` watcher on `wiki/` that triggers debounced rebuilds of the registry, `xrefs.json`, and analytics on file changes. Search-index embedding runs on a conservative schedule (every ~30 minutes), not per-change, to avoid memory pressure.
+- **`scripts/extract-images.py`** — walks `raw/attachments/`, runs each unprocessed image through an LLM vision pass (one-shot: *"describe the image, extract any data, extract any text"*), writes the result to a sibling `<image-stem>.description.md` with a SHA256 cache in frontmatter. Images become text-searchable and grep-able. Re-runs skip cached files by hash.
+
+This closes the gap where figure-heavy sources (papers, diagrams, screenshots) are effectively invisible to the LLM unless it reads each image individually.
+
+### Phase 3 — Materialized views (at scale)
+
+At ~250+ pages, the largest remaining read cost is in-domain queries about dense topics — answering one question requires reading 10-15 related pages.
+
+- **Per-god-node implementation views** — for each top-N god node, a regenerated sibling `<slug>.implementations.md` file aggregates its inbound pages with their frontmatter summaries. A query about a god-node topic reads one view file (~1,500 tokens) instead of 15+ individual page reads (~15,000+ tokens). Estimated 70-80% read cost reduction on dense in-domain queries.
+
+Views must be regenerated reliably — stale views are worse than no views. Deferred until wiki size makes the manual-read cost painful; at smaller scales the complexity is not worth the savings.
+
+### Deferred / optional
+
+- **Confidence-tagged wikilinks** — mark inferred or unverified links; helps provenance tracking at 200+ pages
+- **Cross-collection search wrapper** — one-shot search across multiple domain collections, useful when cross-domain queries become regular
+- **Skip-list for derivative sources** — detect when a new source overlaps with an already-ingested one and surface existing coverage before re-reading
+
+---
+
+## Files at the repo root
+
+| File | Purpose |
+|---|---|
+| [`PROGRAM.md`](PROGRAM.md) | Portable, harness-agnostic build-and-operate program. **Start here to adopt the pattern.** |
+| [`CLAUDE.md`](CLAUDE.md) | Worked example of the operating schema translated into the Claude Code harness. |
+| [`SPEC.md`](SPEC.md) | Architectural rationale and numeric invariants (budgets, thresholds). |
+| [`README.md`](README.md) | This file. |
+| `LICENSE` | MIT. |
+
+## Directory layout
 
 ```
 Vault/
 ├── raw/                   # Immutable sources (gitignored)
 │   ├── assets/            # Inbox — unprocessed
-│   ├── attachments/       # Obsidian-extracted images
+│   ├── attachments/       # Locally-extracted images
 │   └── archived/          # Processed sources
-├── wiki/                  # LLM-maintained markdown
+├── wiki/                  # LLM-maintained, git-tracked
 │   ├── index.md           # Thin pointer → per-domain manifests
 │   ├── overview.md        # One-sentence navigator per domain
 │   ├── log.md             # Reverse-chronological activity log
-│   ├── xrefs.json         # Precomputed cross-reference map
+│   ├── xrefs.json         # Precomputed wikilink graph
 │   └── <domain>/
 │       ├── _manifest.md   # Prose + auto-generated registry
 │       ├── sources/
 │       ├── entities/
 │       ├── concepts/
 │       └── analyses/
-├── scripts/               # Lint + automation helpers
-├── .claude/skills/        # ingest / query / health
-├── .mcp.json              # MCP config (qmd search)
-├── CLAUDE.md              # Agent-facing schema
-├── SPEC.md                # Architecture source of truth
-└── README.md              # This file
+├── scripts/               # Lint + automation (all seven inlined in PROGRAM.md)
+├── .claude/skills/        # Claude Code skill files (ingest / query / health)
+├── PROGRAM.md             # Portable build-and-operate program
+├── CLAUDE.md              # Harness-specific worked example
+├── SPEC.md                # Architecture rationale
+└── README.md
 ```
 
-## Quickstart
-
-1. Clone or fork this repo.
-2. Read [`PROGRAM.md`](PROGRAM.md) for the portable spec, or [`CLAUDE.md`](CLAUDE.md) if you're using Claude Code.
-3. Replace the example domains in `wiki/` with your own. Each domain needs a `_manifest.md` and the four standard subdirectories.
-4. Drop sources into `raw/assets/` and invoke `/ingest` (or your harness's equivalent).
-5. Keep the lint green:
-   ```bash
-   python3 scripts/check-wikilinks.py             # all [[slug]] refs resolve
-   python3 scripts/check-frontmatter-domain.py    # domain: matches parent dir
-   python3 scripts/detect-domain-divergence.py    # manifest budget + community detection
-   bash   scripts/build-registry.sh <domain>      # regenerate manifest registry
-   ```
-
-## Portability
-
-`PROGRAM.md`, `CLAUDE.md`, `SPEC.md`, `scripts/`, and the `wiki/` skeleton are harness-agnostic. The `.claude/skills/` directory uses the [agentskills.io](https://agentskills.io) open `SKILL.md` format, but its content references Claude Code tool names (`Read`, `Edit`, `Bash`, ...) — swap those for your harness's equivalents. Start from `PROGRAM.md` if you're adopting from a different harness.
-
-## Files at the repo root
-
-| File | Purpose |
-|---|---|
-| [`PROGRAM.md`](PROGRAM.md) | Portable, harness-agnostic spec. **Start here to adopt the pattern.** |
-| [`CLAUDE.md`](CLAUDE.md) | Agent-facing operational schema for this layout (Claude Code specifics). |
-| [`SPEC.md`](SPEC.md) | Architectural rationale and acceptance criteria. |
-| [`README.md`](README.md) | This file. |
-| `LICENSE` | MIT. |
-
-## A Note on Privacy
+## A note on privacy
 
 This is a git-versioned vault. **Anything committed to `wiki/` enters git history and is recoverable even after deletion.** A public remote means public content *and* public history.
 
 - `raw/` is gitignored — source documents stay local. Only `wiki/` is tracked.
-- `.claude/settings.local.json` is gitignored too; it accumulates machine paths and personal project references. Generate your own.
-- Think before pushing to a public remote. Research notes are often personal in ways that aren't obvious until they're indexed.
-- Force-pushing to rewrite history is rarely clean: GitHub caches forks and PRs for days, mirrors may exist, pre-rewrite clones keep the old history. See [GitHub's docs on removing sensitive data](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository) before attempting one.
-- The split between a private working vault and a public template is intentional. Run your personal vault in a private repo; copy the schema and scripts out into a public repo (or fork this template) rather than sanitizing the private one retroactively.
+- `.claude/settings.local.json` is gitignored; it accumulates personal machine paths and project references. Generate your own.
+- Think before pushing to a public remote. Research notes are often personal in ways that are not obvious until they are indexed.
+- Force-pushing to rewrite history is rarely clean — GitHub caches forks and PRs for days, mirrors may exist, pre-rewrite clones keep the old history. See [GitHub's docs on removing sensitive data](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository) before attempting one.
+- The split between a private working vault and a public template is intentional. Run your personal vault in a private repo; copy the schema out into a public repo (or fork this template) rather than sanitizing the private one retroactively.
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE). The schema, scripts, and structural patterns are published in case they're useful for other wikis hitting the same scaling wall. Content in a personal vault is personal research notes; this template ships with none.
+MIT — see [`LICENSE`](LICENSE). The schema, scripts, and structural patterns are published in case they are useful for other wikis hitting the same scaling wall. Content in a personal vault is personal research notes; this template ships with none.
