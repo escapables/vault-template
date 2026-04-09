@@ -121,6 +121,7 @@ Views must be regenerated reliably — stale views are worse than no views. Defe
 - **Confidence-tagged wikilinks** — mark inferred or unverified links; helps provenance tracking at 200+ pages
 - **Cross-collection search wrapper** — one-shot search across multiple domain collections, useful when cross-domain queries become regular
 - **Skip-list for derivative sources** — detect when a new source overlaps with an already-ingested one and surface existing coverage before re-reading
+- **Hybrid-recall search for overlap and contradiction scans** — switch the ingest overlap search (Step 2.4) and the `/health <domain>` contradiction detection from `qmd search` (BM25) to `qmd query --no-rerank` (hybrid BM25 + vector, skipping the LLM re-rank pass). Both use cases want recall over top-K precision — the agent reads summaries of every hit anyway — so `--no-rerank` buys vector's semantic recall (catches paraphrase and synonym overlap BM25 misses) without paying for a re-rank that does not change the candidate set. The user-facing `/query` flow keeps re-ranking because top-result precision matters there. Estimated payoff: fewer missed overlaps during ingest, which means fewer near-duplicate pages and fewer flags from `find-near-duplicates.sh` later.
 
 ---
 
