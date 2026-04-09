@@ -9,7 +9,7 @@ Architectural source of truth. Documents invariants, layout, and the numeric con
 
 ## 1. Objective
 
-Restructure the canonical [LLM Wiki](https://gist.github.com/karpathy/3ae50c94fe5c72884137a38d5b81d5ff) pattern from a single flat namespace into **physically separated per-domain directories**, each with its own search collection, manifest, and scoped operations. A flat layout works at ~30-60 pages; beyond that, per-session reading cost scales with total page count. Domain atomization replaces honor-system scoping with mechanical enforcement (`scripts/check-frontmatter-domain.py`).
+Restructure the canonical [LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) pattern from a single flat namespace into **physically separated per-domain directories**, each with its own search collection, manifest, and scoped operations. A flat layout works at ~30-60 pages; beyond that, per-session reading cost scales with total page count. Domain atomization replaces honor-system scoping with mechanical enforcement (`scripts/check-frontmatter-domain.py`).
 
 ### Success criteria
 

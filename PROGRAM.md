@@ -8,7 +8,7 @@ status: distribution
 
 A single-file, harness-agnostic specification an LLM can follow to **build** a domain-atomized personal knowledge wiki from an empty directory, and then **operate** it. Read this file end-to-end; by the last page you will have produced the same repository structure found in the accompanying reference example, plus enough operating instructions to run it indefinitely.
 
-This pattern is an evolution of the [canonical LLM Wiki](https://gist.github.com/karpathy/3ae50c94fe5c72884137a38d5b81d5ff) that replaces the single flat namespace with physically separated per-domain directories. A flat layout works at ~30-60 pages; beyond that, per-session reading cost scales with total page count. Domain atomization fixes this by making per-session reads scale with the **touched** domain only, and replaces honor-system scoping with mechanical enforcement.
+This pattern is an evolution of the [canonical LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) that replaces the single flat namespace with physically separated per-domain directories. A flat layout works at ~30-60 pages; beyond that, per-session reading cost scales with total page count. Domain atomization fixes this by making per-session reads scale with the **touched** domain only, and replaces honor-system scoping with mechanical enforcement.
 
 > **How to read this file.** Part I is a linear build procedure (Steps 1-9). Part II specifies the three operations (ingest, query, health) you will run against the wiki after it is built. Part III covers how domains evolve (split / merge) as the wiki grows. Part IV records meta-notes about portability. Do Part I in order before attempting anything in Part II.
 
