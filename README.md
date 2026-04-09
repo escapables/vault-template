@@ -1,6 +1,6 @@
 # Vault — A Domain-Atomized LLM Wiki
 
-A personal knowledge wiki built on [Andrej Karpathy's LLM Wiki pattern](https://gist.github.com/karpathy/3ae50c94fe5c72884137a38d5b81d5ff), reorganized around one question: **how do you keep per-session token cost flat as the wiki grows?**
+A personal knowledge wiki built on [Andrej Karpathy's LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f), reorganized around one question: **how do you keep per-session token cost flat as the wiki grows?**
 
 A flat LLM wiki works beautifully up to ~30-60 pages. Past that, per-session read cost grows roughly linearly with total page count — a 6-source ingest on a flat ~130-page wiki spends ~60% of its tokens reading existing state before writing anything. This layout drops per-ingest read cost by **~65-71%** at that scale by making cost scale with the **touched domain** rather than the whole wiki. The savings compound as the wiki grows.
 
