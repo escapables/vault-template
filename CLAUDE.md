@@ -29,7 +29,7 @@ Vault/
     ├── log.md              # Reverse-chronological activity log
     ├── xrefs.json          # Auto-generated cross-reference map
     └── <domain>/
-        ├── _manifest.md    # Prose + auto-generated registry
+        ├── _manifest.md    # Prose + auto-generated registry + analytics
         ├── sources/
         ├── entities/
         ├── concepts/
@@ -86,7 +86,7 @@ Other page rules:
 Manifest-first. Progressive disclosure. Token budget matters.
 
 1. Discovery:
-   - manifest registry
+   - manifest registry + analytics block
    - frontmatter summaries
    - scoped mechanical search such as `rg -n "<terms>" wiki/<domain>`
    - optional scoped index search such as `qmd search "<terms>" -c vault-<domain>`
@@ -106,6 +106,16 @@ Rules:
 - for returning sessions, inspect recent git history before re-reading broad content
 - keep `wiki/log.md` reverse-chronological; newest entries at the top
 
+## Harness Reminders
+
+- this file plus `PROGRAM.md` are the default reminder layer
+- if the harness supports session/tool hooks, point the reminder hook at `scripts/wiki-session-reminder.sh`
+- reminder contract:
+  - route by manifest `summary:` lines only
+  - after routing, read the chosen manifest including registry + analytics
+  - prefer scoped search before broad grep
+  - after edits, rebuild registry/xrefs/analytics/xrefs in the documented order
+
 ## Operation: Ingest
 
 Use this for a new source in `raw/assets/` or for a URL the human asks you to file.
@@ -118,16 +128,17 @@ Use this for a new source in `raw/assets/` or for a URL the human asks you to fi
 6. Search overlap inside the chosen domain. Default to `rg`; use an optional scoped index only if configured.
 7. Discuss durable takeaways with the human before filing when the source is substantial or ambiguous.
 8. Create or update source/entity/concept/analysis pages in one primary domain.
-9. Update manifest prose if new load-bearing facts entered the wiki; never hand-edit the registry block.
+9. Update manifest prose if new load-bearing facts entered the wiki; never hand-edit the registry or analytics blocks.
 10. Run `bash scripts/build-registry.sh <domain>`.
-11. Run `python3 scripts/build-xrefs.py`.
-12. Run `python3 scripts/build-analytics.py`.
-13. Prepend an entry to `wiki/log.md`.
-14. Flag contradictions on both affected pages.
-15. Verify touched pages: frontmatter, domain alignment, wikilinks, math, manifest budget.
-16. If an index adapter is enabled, refresh it in the foreground. Never run embedding or reranking jobs in the background.
-17. Archive processed or skipped sources from `raw/assets/` to `raw/archived/`.
-18. Commit reviewable changes when the human asks or when the repo workflow expects ingest commits.
+11. Prepend an entry to `wiki/log.md`.
+12. Run `python3 scripts/build-xrefs.py`.
+13. Run `python3 scripts/build-analytics.py`.
+14. Run `python3 scripts/build-xrefs.py` again so generated manifest links land in `wiki/xrefs.json`.
+15. Flag contradictions on both affected pages.
+16. Verify touched pages: frontmatter, domain alignment, wikilinks, math, manifest budget.
+17. If an index adapter is enabled, refresh it in the foreground. Never run embedding or reranking jobs in the background.
+18. Archive processed or skipped sources from `raw/assets/` to `raw/archived/`.
+19. Commit reviewable changes when the human asks or when the repo workflow expects ingest commits.
 
 Skip and archive, with a log note, when the source is duplicate, derivative, SEO spam, too thin to support reusable facts, or too broad to connect cleanly to wiki themes. Multiple thin sources on the same event can merge into one source page.
 
@@ -136,12 +147,12 @@ Skip and archive, with a log note, when the source is duplicate, derivative, SEO
 Use this when the human asks a question that should be answered from wiki knowledge.
 
 1. Route via manifest `summary:` lines only.
-2. Load the chosen domain manifest.
+2. Load the chosen domain manifest, including the analytics block.
 3. Search with scoped mechanical search by default; use optional semantic search only if explicitly enabled.
 4. Read via progressive disclosure.
 5. Answer with `[[wikilink]]` citations.
 6. Offer to file substantial reusable answers as `wiki/<domain>/analyses/<slug>.md`.
-7. If filed, update manifest registry and prepend `wiki/log.md`.
+7. If filed, update manifest registry, prepend `wiki/log.md`, rebuild xrefs, rebuild analytics, then rebuild xrefs again.
 
 ## Operation: Health
 
@@ -165,6 +176,7 @@ Error propagation rule: after fixing a wrong value, grep the wiki for the old va
 - after broader content changes, run:
   - `python3 scripts/build-xrefs.py`
   - `python3 scripts/build-analytics.py`
+  - `python3 scripts/build-xrefs.py`
   - `python3 scripts/check-wikilinks.py`
   - `python3 scripts/check-frontmatter-domain.py`
   - `python3 scripts/detect-domain-divergence.py`
@@ -191,6 +203,7 @@ Keep current:
 Do not hand-edit:
 
 - `<!-- REGISTRY:START ... REGISTRY:END -->`
+- `<!-- ANALYTICS:START ... ANALYTICS:END -->`
 
 Prose budget:
 
@@ -249,12 +262,14 @@ Serial consolidation:
 
 1. update domain manifest prose if needed
 2. run `bash scripts/build-registry.sh <domain>`
-3. run `python3 scripts/build-xrefs.py`
-4. prepend `wiki/log.md`
-5. deduplicate overlapping concept/entity pages
-6. archive processed sources
-7. verify page counts against manifest `page_count`
-8. refresh optional search adapter if enabled
+3. prepend `wiki/log.md`
+4. run `python3 scripts/build-xrefs.py`
+5. run `python3 scripts/build-analytics.py`
+6. run `python3 scripts/build-xrefs.py`
+7. deduplicate overlapping concept/entity pages
+8. archive processed sources
+9. verify page counts against manifest `page_count`
+10. refresh optional search adapter if enabled
 
 ## Customizing This File
 
