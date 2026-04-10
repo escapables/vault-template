@@ -32,12 +32,22 @@ Before Step 1, confirm the following are available:
 
 **Optional but recommended** (used by late-stage features; the core wiki works without them):
 
-- A keyword/hybrid search tool with per-collection scoping. The reference example uses [`qmd`](https://github.com/qmd-search/qmd); any equivalent works.
+- A scoped keyword search tool. The reference example uses [`qmd search`](https://github.com/qmd-search/qmd); `rg -n "<terms>" wiki/<domain>` is the portable fallback.
 - `networkx` (`pip install networkx`) — for the graph-based divergence scanner (§III.2)
 - `tiktoken` (`pip install tiktoken`) — for precise manifest token measurement; falls back to `wc -w × 0.75`
 - `pdfinfo` (from `poppler-utils`) — for PDF page counting before reads
 
-### 0.3 Glossary
+### 0.3 Portability contract
+
+Core requirements are file read/write, shell, git, Python, and the ability to ask the human clarifying questions. Optional web fetch helps URL ingests and staleness checks, but the wiki still works without it.
+
+The default search mode is safe mechanical search: scoped keyword search inside the chosen domain before reading page bodies. Use `rg` if nothing else exists. Low page counts do not need an index; around ~80 articles/pages, a scoped index such as `qmd search` usually starts paying for itself. Treat ~80 as a practical threshold, not an invariant. Do not make LLM reranking, vector search, MCP tools, local GGUF models, Claude hooks, Codex skills/plugins, or any harness-specific feature part of the core path.
+
+If the human asks to enable hybrid semantic search or LLM reranking, warn first: it can load local GGUF models, use significant RAM, run slowly on CPU-only machines, and use GPU/VRAM if available. Keep that mode opt-in; the default remains mechanical scoped search.
+
+Harness-specific features belong in adapter files or examples. Each implementing agent should use the best practices native to its own harness while preserving the rules here: domain atomization, manifest-first reading, scoped search, registries, xrefs, health checks, math verification, and single-domain default operations.
+
+### 0.4 Glossary
 
 | Term | Meaning |
 |---|---|
@@ -1459,7 +1469,19 @@ This is the only manifest loaded for this ingest. Read the prose (Scope / Key fa
 
 ### Step 2.4 Search for overlap
 
-If your harness has a search index, query it scoped to the chosen domain (the reference uses `qmd search "<topics>" -c vault-<domain>`). Otherwise grep the domain directory. The question you are answering: *does this material already live somewhere, even partially?*
+Use scoped mechanical search inside the chosen domain before reading page bodies. Portable fallback:
+
+```bash
+rg -n "<query terms>" wiki/<domain>
+```
+
+Reference implementation:
+
+```bash
+qmd search "<topics>" -c vault-<domain>
+```
+
+Do not default to LLM reranking or local-model hybrid search. If the human explicitly enables those, warn that they can load local GGUF models, use significant RAM, run slowly on CPU-only machines, and use GPU/VRAM if available. The question you are answering: *does this material already live somewhere, even partially?*
 
 ### Step 2.5 Discuss takeaways with the human
 
@@ -1517,7 +1539,7 @@ Audit the touched pages for:
 - Math correctness (see §8 principles — no mental math)
 - Manifest prose within budget (run `python3 scripts/detect-domain-divergence.py`)
 
-A fresh subagent is ideal here because it has no context bias from the ingest itself.
+If the harness offers a fresh-context/subagent mechanism, use it here to reduce context bias. Otherwise, run the same checks serially.
 
 ### Step 2.13 Re-index search
 
@@ -1546,7 +1568,7 @@ When multiple sources cover the same event, **merge into one page** extracting f
 
 ### 2.B Cross-domain ingest
 
-Cross-domain ingests require an **explicit instruction** from the human like *"ingest X as cross-domain a,b"*. Load both manifests, search both collections, but still file pages in a **single primary domain** with wikilinks into the secondary. **Never duplicate a page across domains.**
+Cross-domain ingests require an **explicit instruction** from the human like *"ingest X as cross-domain a,b"*. Load both manifests, search both domain scopes, but still file pages in a **single primary domain** with wikilinks into the secondary. **Never duplicate a page across domains.**
 
 ### 2.C Batch ingest
 
@@ -1581,7 +1603,7 @@ Prose + registry. Gives you the key facts and the list of pages worth searching.
 
 ### Step 3.3 Search
 
-Scoped to the chosen domain. Keyword or hybrid search if your harness offers one.
+Use scoped mechanical search inside the chosen domain. Prefer a scoped keyword index if available; otherwise use `rg -n "<query terms>" wiki/<domain>`. Hybrid semantic search or LLM reranking is opt-in only after the compute-heavy warning in Part 0 §0.3.
 
 ### Step 3.4 Read relevant pages via progressive disclosure
 
@@ -1605,7 +1627,7 @@ Domain: <domain>. <Brief summary of the answer and pages consulted.>
 
 ### 3.A Cross-domain query
 
-Requires `--cross-domain a,b` or equivalent explicit instruction. Load both manifests, search both collections, but file any resulting analysis into a single primary domain with cross-links.
+Requires `--cross-domain a,b` or equivalent explicit instruction. Load both manifests, search both domain scopes, but file any resulting analysis into a single primary domain with cross-links.
 
 ## 4. Health
 
@@ -1623,7 +1645,7 @@ Runs contradictions, math verification, knowledge gaps, and (optionally) web res
 - Knowledge gap identification — grep for uncertainty markers, cross-source transfer claims without caveats, temporal staleness, unquantified qualitative claims
 - Web research — fill fillable gaps via high-trust sources. **Never silently update the wiki from web research.** Report findings, let the human approve.
 
-**Fix-verify loop.** If the check finds FAILs, fix them, then spawn a fresh subagent to verify the fixes landed and did not introduce new errors. Max 3 iterations; escalate to the human after that.
+**Fix-verify loop.** If the check finds FAILs, fix them, then verify the fixes landed and did not introduce new errors. If the harness offers a fresh-context/subagent mechanism, use it for independent verification; otherwise verify serially in the same harness. Max 3 iterations; escalate to the human after that.
 
 ### 4.2 `health --structural` — cheap global lint
 
@@ -1635,7 +1657,7 @@ Runs across all domains:
 - Slug collision check: `find wiki/*/ -name '*.md' -not -name '_*' -exec basename {} .md \; | sort | uniq -d` should be empty
 - Orphan detection — pages with no inbound links (excluding log, overview, index)
 - `python3 scripts/detect-domain-divergence.py` — manifest pressure + graph community detection
-- `bash scripts/find-near-duplicates.sh 0.70` — BM25 near-duplicate scan
+- `bash scripts/find-near-duplicates.sh 0.70` — optional BM25 near-duplicate scan when a scoped search adapter is configured; skip or replace it if the harness has no indexed search
 
 ### 4.3 `health --domain-scan` — divergence only
 
@@ -1691,7 +1713,7 @@ Structural rules that scripts enforce. Violating any is a lint failure.
 - **Never modify `raw/`.** Sources are immutable; ingest produces wiki pages, it does not edit the source.
 - **Verify fetched content.** Any tool that goes through an intermediate summarizing model (e.g. a web-fetch layer) can fabricate details. When a local copy exists, cross-check against it. Tag source pages with the verification tier from §1.5.
 - **Apply skepticism to social-media sources.** Extract verifiable facts and core ideas, not the author's framing. When a thread references a paper or repo, cite the primary source instead.
-- **README claims ≠ code reality.** For repos central to an analysis, verify architectural claims against actual source code via a subagent or dedicated read pass, so raw source never enters the main conversation context. Return only a verification table (claim → status → evidence) plus verdict.
+- **README claims ≠ code reality.** For repos central to an analysis, verify architectural claims against actual source code via a fresh-context/subagent mechanism if available, or a dedicated read pass otherwise. Keep the main context lean: return only a verification table (claim → status → evidence) plus verdict.
 - **Every ingest touches multiple pages.** A single source typically updates 5-15 pages within one domain.
 - **Cross-reference aggressively.** The connections between pages are as valuable as the pages themselves.
 - **Prefer updating over creating.** If a relevant page exists, update it.
@@ -1805,7 +1827,7 @@ Move or delete its pages (`git mv` preserves history), `rm -rf wiki/<name>/`, re
 
 References to specific tools throughout this file — `qmd`, `git`, `networkx`, `tiktoken`, `pdfinfo`, WebFetch-style web tools — are examples from the working reference implementation. In a different harness, substitute the local equivalent:
 
-- **Search**: any keyword or hybrid search with per-collection scoping (or just grep, for small wikis)
+- **Search**: scoped mechanical keyword search by default (`rg` or a per-domain index such as `qmd search`); hybrid semantic search or LLM reranking only after explicit opt-in and the compute-heavy warning in Part 0 §0.3
 - **Graph analysis**: any library with community detection (or skip the graph trigger and rely on the manifest-pressure trigger, which needs nothing beyond `wc`)
 - **Tokenizer**: any tokenizer compatible with modern LLMs (or fall back to `wc -w × 0.75`)
 - **PDF reader**: any PDF tool (or skip PDF ingest)

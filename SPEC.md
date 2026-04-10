@@ -5,18 +5,18 @@ status: template
 
 # LLM Wiki Template — Domain-Atomized Architecture
 
-Architectural source of truth. Documents invariants, layout, and the numeric contracts scripts enforce. Operational workflow lives in `CLAUDE.md`; this file explains the shape.
+Architectural source of truth. Documents invariants, layout, and the numeric contracts scripts enforce. Portable operations live in `PROGRAM.md`; harness-specific files such as `CLAUDE.md` are adapter examples.
 
 ## 1. Objective
 
-Restructure the canonical [LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) pattern from a single flat namespace into **physically separated per-domain directories**, each with its own search collection, manifest, and scoped operations. A flat layout works at ~30-60 pages; beyond that, per-session reading cost scales with total page count. Domain atomization replaces honor-system scoping with mechanical enforcement (`scripts/check-frontmatter-domain.py`).
+Restructure the canonical [LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) pattern from a single flat namespace into **physically separated per-domain directories**, each with its own manifest, scoped operations, and optional scoped search adapter. A flat layout works at ~30-60 pages; beyond that, per-session reading cost scales with total page count. Domain atomization replaces honor-system scoping with mechanical enforcement (`scripts/check-frontmatter-domain.py`).
 
 ### Success criteria
 
 1. Every page lives in exactly one domain directory.
-2. `qmd` collections exist per domain; `qmd search/vsearch/query -c vault-<domain>` returns only that domain.
-3. `/ingest`, `/query`, `/health` default to single-domain; cross-domain is opt-in.
-4. Wikilinks resolve by slug across all domains (Obsidian + qmd behavior).
+2. Scoped search is available per domain, either via portable mechanical search (`rg -n "<terms>" wiki/<domain>`) or an optional per-domain index such as `qmd search -c vault-<domain>`.
+3. Ingest, query, and health operations default to single-domain; cross-domain is opt-in.
+4. Wikilinks resolve by slug across all domains.
 5. Average ingest context cost scales with the **touched domain's** page count, not the whole wiki's.
 
 ---
@@ -31,15 +31,15 @@ The template ships with two placeholder domains: **`research`** (external source
 
 1. Create `wiki/<name>/{sources,entities,concepts,analyses}/`
 2. Write `wiki/<name>/_manifest.md` per §4
-3. `qmd collection add wiki/<name> --name vault-<name> --mask "**/*.md"`
-4. `qmd update && qmd embed` (foreground only)
+3. If using an indexed search adapter, add a scoped collection for the domain. Reference: `qmd collection add wiki/<name> --name vault-<name> --mask "**/*.md"`.
+4. If using that adapter, refresh it in the foreground. Reference: `qmd update`; run `qmd embed` only if vector search is explicitly enabled.
 5. Update `wiki/index.md` and `wiki/overview.md`
 
 Scripts auto-discover domains from `wiki/` children — no script edits needed.
 
 ### Removing a domain
 
-Move or delete its pages, `rm -rf wiki/<name>/`, `qmd collection remove vault-<name>`, `qmd update`, then `check-wikilinks.py` to confirm nothing dangles.
+Move or delete its pages, remove any optional search collection, refresh the search adapter if present, then `check-wikilinks.py` to confirm nothing dangles.
 
 ---
 
@@ -47,7 +47,8 @@ Move or delete its pages, `rm -rf wiki/<name>/`, `qmd collection remove vault-<n
 
 ```
 Vault/
-├── CLAUDE.md                  # Operational schema (agent-facing)
+├── PROGRAM.md                 # Portable build-and-operate program
+├── CLAUDE.md                  # Claude Code adapter example
 ├── SPEC.md                    # This file (architecture)
 ├── README.md
 ├── raw/                       # Gitignored sources
@@ -55,8 +56,8 @@ Vault/
 │   ├── attachments/
 │   └── archived/
 ├── scripts/
-├── .claude/skills/            # ingest, query, health, review-analysis
-├── .mcp.json
+├── .claude/skills/            # Optional Claude Code adapter files
+├── .mcp.json                  # Optional MCP adapter config
 └── wiki/
     ├── index.md               # GLOBAL: thin pointer index
     ├── overview.md            # GLOBAL: pure navigator
@@ -133,24 +134,37 @@ Measure by slicing at `<!-- REGISTRY:START` and counting with `tiktoken` (`cl100
 
 ---
 
-## 5. Skill Contracts
+## 5. Operation Contracts
 
-Operational detail lives in `CLAUDE.md` and `.claude/skills/`. This section lists only the architectural contracts.
+Portable operational detail lives in `PROGRAM.md`. Harness-specific files may translate these contracts into slash commands, skills, hooks, plugins, or MCP tools, but those adapters are not core requirements.
 
-- **`/ingest`** — classifies by reading each manifest's `summary:` frontmatter line ONLY (never load a full manifest for classification). Then loads the chosen domain's full manifest, searches `-c vault-<domain>`, creates pages, updates manifest prose, regenerates registry, logs.
-- **`/health <domain>`** — deep per-domain checks (contradictions, math, gaps, web research).
-- **`/health --structural`** — cheap global lint: page counts vs manifest `page_count:`, broken wikilinks, orphans, slug collisions, frontmatter/directory match, near-duplicates, divergence scan (§9).
-- **`/health --domain-scan`** — runs only §9 divergence detection.
-- **`/query`** — routes to one domain by default; `--cross-domain a,b` for explicit multi-domain.
-- **No `/health --all`.** Coverage = `--structural` plus one `<domain>` deep run per domain, on separate days.
+- **Ingest** — classifies by reading each manifest's `summary:` frontmatter line ONLY (never load a full manifest for classification). Then loads the chosen domain's full manifest, runs scoped mechanical search in that domain, creates pages, updates manifest prose, regenerates registry, logs.
+- **Deep health for one domain** — checks contradictions, math, gaps, and web research.
+- **Structural health** — cheap global lint: page counts vs manifest `page_count:`, broken wikilinks, orphans, slug collisions, frontmatter/directory match, near-duplicates, divergence scan (§9).
+- **Domain scan** — runs only §9 divergence detection.
+- **Query** — routes to one domain by default; explicit cross-domain instruction required for multi-domain.
+- **No all-domain deep health command.** Coverage = one structural pass plus one deep run per domain, on separate days.
 
 Cross-domain operations require explicit user instruction and still file pages into a single primary domain with wikilinks into secondaries. Never duplicate pages across domains.
 
-### 5.1 qmd collections
+### 5.1 Search adapters
+
+The core contract is scoped mechanical search inside the chosen domain before reading page bodies. Portable fallback:
+
+```bash
+rg -n "<query terms>" wiki/<domain>
+```
+
+Low page counts do not need an index. Around ~80 articles/pages, a scoped index often starts paying for itself; treat that as a practical threshold, not an invariant.
+
+The reference implementation can use `qmd search` collections:
 
 ```bash
 qmd collection add wiki/<domain> --name vault-<domain> --mask "**/*.md"
+qmd search "<query terms>" -c vault-<domain>
 ```
+
+LLM reranking, vector search, `qmd query`, local GGUF models, MCP-backed search, or other hybrid semantic adapters are opt-in only. Warn first: they may load local models, use significant RAM, run slowly on CPU-only machines, and use GPU/VRAM if available.
 
 Global files (`wiki/index.md`, `wiki/overview.md`, `wiki/log.md`) are NOT in any collection — they're navigation, not content.
 
@@ -168,7 +182,7 @@ Every page MUST carry `domain:` matching its parent directory. Mismatch is a str
 
 ### 6.2 Wikilinks
 
-Slug-only: `[[some-entity]]`, never `[[research/entities/some-entity]]`. Obsidian and qmd resolve by basename across the whole vault; cross-domain links Just Work.
+Slug-only: `[[some-entity]]`, never `[[research/entities/some-entity]]`. Basename resolution keeps cross-domain links portable across renderers and search adapters.
 
 ### 6.3 Source pages
 
@@ -178,18 +192,18 @@ Each source page carries exactly one of `source_file: "[[raw/archived/<file>]]"`
 
 ## 7. Acceptance Criteria
 
-After setup, all of the following must hold. Scripts and skills reference these by number.
+After setup, all of the following must hold. Scripts and adapter-specific skills can reference these by number.
 
 1. **Both domain dirs exist**, each with `_manifest.md` and the four subdirectories.
 2. **Page counts match**: every manifest's `page_count:` frontmatter equals `find wiki/<domain> -name '*.md' -not -name '_manifest.md' | wc -l`.
 3. **All wikilinks resolve**: `python3 scripts/check-wikilinks.py` returns clean.
 4. **No slug collisions**: `find wiki/*/ -name '*.md' -exec basename {} .md \; | sort | uniq -d` returns empty.
 5. **Frontmatter matches directory**: `python3 scripts/check-frontmatter-domain.py` returns clean.
-6. **qmd collections exist**: `qmd collection list` shows one per domain.
+6. **Scoped search works**: `rg -n "<known term>" wiki/<domain>` or the chosen search adapter returns results from only that domain.
 7. **Each manifest's prose region is under the 3,000-token budget** (§4.4).
-8. **`/health --structural` passes globally.**
-9. **`/health <domain>` runs cleanly for each domain.**
-10. **`/ingest` of a test source routes to one domain** and updates only that domain's manifest.
+8. **Structural health passes globally.**
+9. **Deep health runs cleanly for each domain.**
+10. **A test source routes to one domain** and updates only that domain's manifest.
 
 ---
 
@@ -200,7 +214,7 @@ After setup, all of the following must hold. Scripts and skills reference these 
 - Maintain slug-based wikilinks. The slug is the contract.
 - Update the relevant manifest after every ingest. Stale manifests collapse the architecture's value.
 - Default operations to one domain.
-- Re-run `qmd update && qmd embed` after bulk file moves.
+- Refresh the scoped search adapter after bulk file moves. If using `qmd`, run `qmd update`; run `qmd embed` only when vector search was explicitly enabled.
 - Keep manifest prose under 3K tokens (§4.4, §9.2.A).
 - Use `git mv` for page relocations so history follows the file.
 
@@ -216,8 +230,8 @@ After setup, all of the following must hold. Scripts and skills reference these 
 - Create a `_meta` directory.
 - Duplicate a page across domains.
 - Read other domains' manifests during a single-domain operation (exception: the `summary:`-only classification read in §5).
-- Skip the verification subagent step in `/ingest` or `/health`.
-- Run `qmd embed` in the background with `&` (memory-heavy; can OOM the machine).
+- Skip independent verification during ingest or health when the harness offers a fresh-context/subagent mechanism; otherwise do verification serially in the same harness.
+- Run heavy embedding/reranking jobs in the background with `&` (memory-heavy; can OOM the machine).
 
 ---
 
@@ -227,7 +241,7 @@ Starting domains are a **starting state, not a target state**. Domains should sp
 
 ### 9.1 Mechanical detection
 
-Run inside `/health --structural` (or standalone via `/health --domain-scan`). Two independent, complementary triggers.
+Run inside structural health (or standalone as a domain scan). Two independent, complementary triggers.
 
 #### 9.2.A Manifest-pressure trigger (cheap, primary)
 
@@ -268,11 +282,11 @@ The scanner never auto-moves or auto-renames. It flags; the user decides.
 
 ### 9.3 After a split (accepted by user)
 
-1. Create new domain dir, manifest, qmd collection (per §2, §5.1).
+1. Create new domain dir, manifest, and optional search collection (per §2, §5.1).
 2. `git mv` the cluster's pages.
 3. Update `domain:` frontmatter on each moved page.
 4. Regenerate `xrefs.json`.
-5. `/health --structural` to confirm zero broken wikilinks (slug resolution should make this trivial, but verify).
+5. Run structural health to confirm zero broken wikilinks (slug resolution should make this trivial, but verify).
 6. Update original manifest; add "see also" pointer to the new domain.
 7. Update `wiki/overview.md` and `wiki/index.md`.
 8. Commit as `refactor: split <old> into <old> + <new>`.
@@ -293,7 +307,7 @@ Conservative — merging is more disruptive than splitting. Flag when **ALL** ho
 ## 10. Out of Scope
 
 - Migrating `raw/` — sources stay flat in `raw/assets/` and `raw/archived/`.
-- Splitting CLAUDE.md per domain — one schema at vault root.
+- Splitting adapter files such as `CLAUDE.md` per domain — keep one portable `PROGRAM.md` at vault root and keep adapters thin.
 - Multi-vault separation.
 - Per-domain commit scoping — domains are about read-time scoping, not write-time.
 - Automated reclassification — once placed, pages stay put unless explicitly moved.

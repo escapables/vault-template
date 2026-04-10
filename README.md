@@ -14,7 +14,9 @@ Each of these is a separate lever. They compose.
 
 ### Currently implemented
 
-- **Domain partitioning.** `wiki/` is physically split by domain (`wiki/<domain-a>/`, `wiki/<domain-b>/`, …). Each domain owns its own `_manifest.md`, its four subdirectories (`sources`, `entities`, `concepts`, `analyses`), and its search collection. Single-domain operations are the default; cross-domain is opt-in. A page in one domain linking `[[foo]]` to a page in another resolves automatically — slugs are global, but operation scope is not.
+- **Domain partitioning.** `wiki/` is physically split by domain (`wiki/<domain-a>/`, `wiki/<domain-b>/`, …). Each domain owns its own `_manifest.md`, its four subdirectories (`sources`, `entities`, `concepts`, `analyses`), and its search scope. Single-domain operations are the default; cross-domain is opt-in. A page in one domain linking `[[foo]]` to a page in another resolves automatically — slugs are global, but operation scope is not.
+
+- **Scoped mechanical search by default.** Use `rg` or another scoped keyword search before reading page bodies. At low page counts, shell search is enough; around ~80 articles/pages, a scoped index such as `qmd search` usually starts paying for itself. Hybrid/vector search and LLM reranking stay opt-in because they can be slow and memory-heavy.
 
 - **Manifest-first reading.** Each `_manifest.md` holds `Scope`, `Key facts`, `Open questions`, `Cross-domain links`, and an auto-generated registry listing every page's one-sentence summary. Reading the manifest alone is usually enough to decide what to search and what to load. Prose is budgeted at ≤ 3,000 tokens; exceeding the budget flags the domain as a split candidate.
 
@@ -45,7 +47,7 @@ Each of these is a separate lever. They compose.
 ### Planned (see Roadmap below)
 
 - **Derived analytics** — god nodes, cross-domain bridges, cluster summaries, stale load-bearing pages, suggested questions — computed from `xrefs.json` into each manifest (Phase 1)
-- **Always-on hooks** — PreToolUse + SessionStart + git hooks that keep manifests, `xrefs.json`, and analytics current without manual invocation (Phase 1)
+- **Adapter reminders / hooks** — harness-native reminders or hooks that keep manifests, `xrefs.json`, and analytics current without making a specific harness part of the core spec (Phase 1)
 - **File watcher** — debounced rebuilds on `wiki/` changes (Phase 2)
 - **Multimodal pre-extraction** — LLM-vision pass on `raw/attachments/` images so figures become text-searchable (Phase 2)
 - **Materialized views** — per-god-node aggregation files that answer dense in-domain queries with one read instead of fifteen (Phase 3)
@@ -83,9 +85,9 @@ Forking works too, but you are starting from a specific harness's conventions (C
 
 The token optimizations listed above are what's currently implemented. Three planned phases extend them, ordered roughly by payoff-over-effort.
 
-### Phase 1 — Derived analytics + always-on hooks
+### Phase 1 — Derived analytics + adapter automation
 
-The biggest remaining gap is that the wiki computes nothing *about itself*. `xrefs.json` has every edge, but no script yet extracts the high-value signals from it. Phase 1 closes that and makes the maintenance layer self-triggering.
+The biggest remaining gap is that the wiki computes nothing *about itself*. `xrefs.json` has every edge, but no script yet extracts the high-value signals from it. Phase 1 closes that with a portable analytics script; harness automation stays in adapters.
 
 - **`scripts/build-analytics.py`** — consumes `xrefs.json` and writes a derived analytics block into each domain manifest (or a sibling `_analytics.md`) containing:
   - **God nodes** — top pages by inbound-link degree (the load-bearing pages you would protect from breaking)
@@ -94,10 +96,10 @@ The biggest remaining gap is that the wiki computes nothing *about itself*. `xre
   - **Recently updated** — pages whose `updated:` frontmatter is within the last 14 days
   - **Stale load-bearing pages** — high-degree pages whose `updated:` is older than 90 days (potential rot)
   - **Suggested questions** — templated from the god nodes; gives fresh sessions a discoverability layer above the manifest
-- **PreToolUse + SessionStart hooks** — deterministic reminders that fire before `Glob`/`Grep` calls, injecting *"prefer scoped search over raw grep; manifests are the entry point"*. Removes the "forgot to read the manifest first" failure mode that soft CLAUDE.md instructions do not catch.
-- **Git post-commit / post-checkout hooks** — auto-rebuild registries, `xrefs.json`, and the new analytics block on every commit. `qmd update` runs in the hook; `qmd embed` is intentionally **not** in the hook (memory-heavy, foreground-only per a documented rule) but the hook emits a reminder on stdout when embed is due.
+- **Harness adapter reminders** — Claude Code could use PreToolUse + SessionStart hooks; Codex or another harness should use its native reminder mechanism. The adapter-level goal is deterministic guidance like *"prefer scoped search over raw grep; manifests are the entry point"*.
+- **Git hook adapter** — optional post-commit / post-checkout hooks can rebuild registries, `xrefs.json`, and analytics. Search-index refreshes are adapter-specific; heavy embedding/reranking jobs stay foreground-only and opt-in.
 
-The three items compose: the analytics block lives in the manifest, the hooks prefetch the manifest, the git hooks keep both current.
+The three items compose: the analytics block lives in the manifest, harness reminders preload or point at the manifest, and optional git hooks keep generated files current.
 
 ### Phase 2 — Auto-sync + multimodal pre-extraction
 
@@ -121,7 +123,7 @@ Views must be regenerated reliably — stale views are worse than no views. Defe
 - **Confidence-tagged wikilinks** — mark inferred or unverified links; helps provenance tracking at 200+ pages
 - **Cross-collection search wrapper** — one-shot search across multiple domain collections, useful when cross-domain queries become regular
 - **Skip-list for derivative sources** — detect when a new source overlaps with an already-ingested one and surface existing coverage before re-reading
-- **Hybrid-recall search for overlap and contradiction scans** — switch the ingest overlap search (Step 2.4) and the `/health <domain>` contradiction detection from `qmd search` (BM25) to `qmd query --no-rerank` (hybrid BM25 + vector, skipping the LLM re-rank pass). Both use cases want recall over top-K precision — the agent reads summaries of every hit anyway — so `--no-rerank` buys vector's semantic recall (catches paraphrase and synonym overlap BM25 misses) without paying for a re-rank that does not change the candidate set. The user-facing `/query` flow keeps re-ranking because top-result precision matters there. Estimated payoff: fewer missed overlaps during ingest, which means fewer near-duplicate pages and fewer flags from `find-near-duplicates.sh` later.
+- **Opt-in hybrid-recall search for overlap and contradiction scans** — keep scoped mechanical search as the default (`rg` or `qmd search`). If the human explicitly enables hybrid/vector search, an adapter can use something like `qmd query --no-rerank` for ingest overlap and deep-health contradiction scans. Warn first: this mode can load local GGUF models, use significant RAM, run slowly on CPU-only machines, and use GPU/VRAM if available. The payoff is semantic recall for paraphrases and synonyms that BM25 can miss, but it is not part of the portable core path.
 
 ---
 
