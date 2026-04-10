@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Verify that every wiki page's `domain:` frontmatter matches its parent
-domain directory. Used by /health --structural to enforce the per-domain
+domain directory. Used by structural health checks to enforce the per-domain
 layout invariant.
 
 Usage:

@@ -2,9 +2,9 @@
 title: "Research — Manifest"
 domain: research
 updated: 2026-01-01
-page_count: 0
+page_count: 1
 tags: [meta, manifest, research]
-summary: "Replace this sentence with a one-line description of what your research domain covers and what kind of question routes here. The classification step in /ingest reads ONLY this summary line."
+summary: "Replace this sentence with a one-line description of what your research domain covers and what kind of question routes here. The ingest classification step reads ONLY this summary line."
 depends_on: []
 pinned: false
 ---

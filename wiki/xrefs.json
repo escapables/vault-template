@@ -11,7 +11,7 @@
       "projects"
     ],
     "updated": "2026-01-01",
-    "summary": "Replace this sentence with a one-line description of what your projects domain covers — typically what you're building, deciding, or operating. The classification step in /ingest reads ONLY this summary line."
+    "summary": "Replace this sentence with a one-line description of what your projects domain covers — typically what you're building, deciding, or operating. The ingest classification step reads ONLY this summary line."
   },
   "research/_manifest": {
     "file": "wiki/research/_manifest.md",
@@ -27,7 +27,7 @@
       "research"
     ],
     "updated": "2026-01-01",
-    "summary": "Replace this sentence with a one-line description of what your research domain covers and what kind of question routes here. The classification step in /ingest reads ONLY this summary line."
+    "summary": "Replace this sentence with a one-line description of what your research domain covers and what kind of question routes here. The ingest classification step reads ONLY this summary line."
   },
   "example-source": {
     "file": "wiki/research/sources/example-source.md",

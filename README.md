@@ -38,7 +38,7 @@ Each of these is a separate lever. They compose.
 
 - **Phased batch ingest.** Parallel agents create source/concept/entity pages inside a single domain; a single serial pass updates shared files (manifest, log, registries). Last-writer-wins hazards on `_manifest.md` and `log.md` are structurally avoided instead of hoped against.
 
-- **Verification discipline that prevents re-ingestion.** Every source page declares a tier (`*Verified against PDF*`, `*Verified against source code*`, `*Unverified — fetched via WebFetch*`, etc.). Low-trust pages get re-verified on demand; high-trust pages do not need to be re-read. **Never mental math** — any number that enters the wiki is computed by Python/bash first, not by the LLM.
+- **Verification discipline that prevents re-ingestion.** Every source page declares a tier (`*Verified against PDF*`, `*Verified against source code*`, `*Unverified — fetched via web tool*`, etc.). Low-trust pages get re-verified on demand; high-trust pages do not need to be re-read. **Never mental math** — any number that enters the wiki is computed by Python/bash first, not by the LLM.
 
 - **Skip criteria.** Duplicate / derivative / SEO spam / too-thin / too-broad sources are archived with a log entry, not a wiki page. The wiki stays dense.
 
@@ -72,11 +72,11 @@ After bootstrap, `PROGRAM.md` also specifies the three day-to-day operations (`i
 
 ### If you want to fork this repo directly
 
-Forking works too, but you are starting from a specific harness's conventions (Claude Code) rather than from the portable spec. Expect to:
+Forking works too. You are starting from the portable spec plus optional adapter examples. Expect to:
 
 1. Delete or rename the two placeholder domains in `wiki/`
 2. Replace the manifest `summary:` lines with your own
-3. Adjust `.claude/skills/` if you are using Claude Code, or delete it if you are not
+3. Adjust adapter examples such as `.claude/skills/` if your harness uses them, or delete them if it does not
 4. Keep the lint green — `python3 scripts/check-wikilinks.py` and `python3 scripts/check-frontmatter-domain.py` should both return `OK`
 
 ---
@@ -96,7 +96,7 @@ The biggest remaining gap is that the wiki computes nothing *about itself*. `xre
   - **Recently updated** — pages whose `updated:` frontmatter is within the last 14 days
   - **Stale load-bearing pages** — high-degree pages whose `updated:` is older than 90 days (potential rot)
   - **Suggested questions** — templated from the god nodes; gives fresh sessions a discoverability layer above the manifest
-- **Harness adapter reminders** — Claude Code could use PreToolUse + SessionStart hooks; Codex or another harness should use its native reminder mechanism. The adapter-level goal is deterministic guidance like *"prefer scoped search over raw grep; manifests are the entry point"*.
+- **Harness adapter reminders** — use the harness's native hook or reminder mechanism. The adapter-level goal is deterministic guidance like *"prefer scoped search over raw grep; manifests are the entry point"*.
 - **Git hook adapter** — optional post-commit / post-checkout hooks can rebuild registries, `xrefs.json`, and analytics. Search-index refreshes are adapter-specific; heavy embedding/reranking jobs stay foreground-only and opt-in.
 
 The three items compose: the analytics block lives in the manifest, harness reminders preload or point at the manifest, and optional git hooks keep generated files current.
@@ -132,7 +132,7 @@ Views must be regenerated reliably — stale views are worse than no views. Defe
 | File | Purpose |
 |---|---|
 | [`PROGRAM.md`](PROGRAM.md) | Portable, harness-agnostic build-and-operate contract. **Start here to adopt the pattern.** |
-| [`CLAUDE.md`](CLAUDE.md) | Worked example of the operating schema translated into the Claude Code harness. |
+| [`CLAUDE.md`](CLAUDE.md) | Harness-agnostic agent operating notes using a compatibility filename. |
 | [`SPEC.md`](SPEC.md) | Architectural rationale and numeric invariants (budgets, thresholds). |
 | [`README.md`](README.md) | This file. |
 | `LICENSE` | MIT. |
@@ -157,9 +157,9 @@ Vault/
 │       ├── concepts/
 │       └── analyses/
 ├── scripts/               # Canonical lint + automation copied by PROGRAM.md
-├── .claude/skills/        # Claude Code skill files (ingest / query / health)
+├── .claude/skills/        # Optional adapter examples
 ├── PROGRAM.md             # Portable build-and-operate contract
-├── CLAUDE.md              # Harness-specific worked example
+├── CLAUDE.md              # Harness-agnostic agent operating notes
 ├── SPEC.md                # Architecture rationale
 └── README.md
 ```
@@ -169,7 +169,7 @@ Vault/
 This is a git-versioned vault. **Anything committed to `wiki/` enters git history and is recoverable even after deletion.** A public remote means public content *and* public history.
 
 - `raw/` is gitignored — source documents stay local. Only `wiki/` is tracked.
-- `.claude/settings.local.json` is gitignored; it accumulates personal machine paths and project references. Generate your own.
+- Optional adapter-local settings such as `.claude/settings.local.json` are gitignored; they can accumulate personal machine paths and project references. Generate only the local settings file your harness needs.
 - Think before pushing to a public remote. Research notes are often personal in ways that are not obvious until they are indexed.
 - Force-pushing to rewrite history is rarely clean — GitHub caches forks and PRs for days, mirrors may exist, pre-rewrite clones keep the old history. See [GitHub's docs on removing sensitive data](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository) before attempting one.
 - The split between a private working vault and a public template is intentional. Run your personal vault in a private repo; copy the schema out into a public repo (or fork this template) rather than sanitizing the private one retroactively.

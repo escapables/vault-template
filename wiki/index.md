@@ -15,12 +15,12 @@ This is the thin pointer index for the vault. It lists the domain manifests and 
 ## Global navigation
 
 - `wiki/overview.md` — top-level navigator with a one-sentence description per domain
-- `wiki/log.md` — append-only chronological activity log
+- `wiki/log.md` — reverse-chronological activity log
 - `wiki/xrefs.json` — auto-generated wikilink graph (read with `python3` or grep)
 
 ## Adding a domain
 
 1. Create `wiki/<name>/` with the four standard subdirectories: `sources/`, `entities/`, `concepts/`, `analyses/`
 2. Write `wiki/<name>/_manifest.md` per [`SPEC.md` §4](../SPEC.md)
-3. Add the qmd collection: `qmd collection add wiki/<name> --name vault-<name> --mask "**/*.md"`
+3. If you use a search tool with per-collection scoping, add a collection for the new domain
 4. Add the new domain to this index and to `overview.md`

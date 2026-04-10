@@ -8,7 +8,7 @@
 raw/
 *.AppImage
 
-# Claude Code permission allowlist — do not commit. Each operator generates
-# their own as they approve commands. Committing this file leaks the operator's
-# personal workflow (project paths, scratch dirs, /tmp/ scripts, etc).
+# Local harness permission allowlist — do not commit. This optional adapter
+# path is generated per operator as commands are approved. Committing it leaks
+# personal workflow state (project paths, scratch dirs, /tmp/ scripts, etc).
 .claude/settings.local.json

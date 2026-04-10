@@ -43,11 +43,11 @@ Core requirements are access to this reference repository, file read/write, shel
 
 Path variables used below:
 
-- `<reference-root>` — the directory containing this `PROGRAM.md`, `scripts/`, `SPEC.md`, and the example `wiki/`.
+- `<reference-root>` — the directory containing this `PROGRAM.md`, `CLAUDE.md`, `scripts/`, `SPEC.md`, and the example `wiki/`.
 - `<vault-root>` — the target vault directory being built or operated.
 - If bootstrapping in place from a fork of this repo, `<reference-root>` and `<vault-root>` are the same directory. In that case, do not copy files over themselves; verify the existing artifacts instead.
 
-The default search mode is safe mechanical search: scoped keyword search inside the chosen domain before reading page bodies. Use `rg` if nothing else exists. Low page counts do not need an index; around ~80 articles/pages, a scoped index such as `qmd search` usually starts paying for itself. Treat ~80 as a practical threshold, not an invariant. Do not make LLM reranking, vector search, MCP tools, local GGUF models, Claude hooks, Codex skills/plugins, or any harness-specific feature part of the core path.
+The default search mode is safe mechanical search: scoped keyword search inside the chosen domain before reading page bodies. Use `rg` if nothing else exists. Low page counts do not need an index; around ~80 articles/pages, a scoped index such as `qmd search` usually starts paying for itself. Treat ~80 as a practical threshold, not an invariant. Do not make LLM reranking, vector search, MCP tools, local GGUF models, hooks, skills/plugins, or any harness-specific feature part of the core path.
 
 If the human asks to enable hybrid semantic search or LLM reranking, warn first: it can load local GGUF models, use significant RAM, run slowly on CPU-only machines, and use GPU/VRAM if available. Keep that mode opt-in; the default remains mechanical scoped search.
 
@@ -80,6 +80,7 @@ Here is what you will produce. Create this structure in your head before you tou
 <vault-root>/
 ├── .gitignore
 ├── PROGRAM.md                # copied from <reference-root>/PROGRAM.md unless bootstrapping in place
+├── CLAUDE.md                 # harness-agnostic agent notes; compatibility filename
 ├── README.md                 # a short human-facing intro (Step 9)
 ├── raw/                      # sources (gitignored)
 │   ├── assets/               # inbox — unprocessed
@@ -118,10 +119,13 @@ Here is what you will produce. Create this structure in your head before you tou
 mkdir -p raw/assets raw/archived raw/attachments scripts wiki
 ```
 
-If `<reference-root>` and `<vault-root>` are different directories, copy this contract into the target vault now:
+If `<reference-root>` and `<vault-root>` are different directories, copy the portable contract and the harness-agnostic agent notes into the target vault now:
 
 ```bash
 cp <reference-root>/PROGRAM.md <vault-root>/PROGRAM.md
+cp <reference-root>/CLAUDE.md <vault-root>/CLAUDE.md
+cmp <reference-root>/PROGRAM.md <vault-root>/PROGRAM.md
+cmp <reference-root>/CLAUDE.md <vault-root>/CLAUDE.md
 ```
 
 Do not create the domain subdirectories yet — you choose their names in Step 5 with the human.
@@ -146,7 +150,7 @@ raw/
 .obsidian/plugins/*/styles.css
 .obsidian/plugins/*/data.json
 
-# Harness-specific permission allowlists — personal workflow, never commit
+# Optional adapter permission allowlists — personal workflow, never commit
 .claude/settings.local.json
 ```
 
@@ -176,7 +180,7 @@ This is the thin pointer index for the vault. It lists the domain manifests and 
 ## Global navigation
 
 - `wiki/overview.md` — top-level navigator with a one-sentence description per domain
-- `wiki/log.md` — append-only chronological activity log
+- `wiki/log.md` — reverse-chronological activity log
 - `wiki/xrefs.json` — auto-generated wikilink graph
 
 ## Adding a domain
@@ -223,11 +227,11 @@ tags: [meta]
 
 # Wiki Log
 
-Append-only chronological record of wiki activity. New entries go at the **TOP**, immediately after the hint comment below. The file is reverse-chronological so the newest activity is always visible first.
+Reverse-chronological record of wiki activity. New entries go at the **TOP**, immediately after the hint comment below, so the newest activity is always visible first.
 
 When this file exceeds ~300 lines, archive entries older than 30 days to `wiki/log-archive-YYYY.md`. The archive is still git-tracked and search-indexable.
 
-<!-- grep "^## \[" log.md | tail -5 -->
+<!-- grep "^## \[" log.md | head -5 -->
 
 ## [YYYY-MM-DD] setup | Initial vault bootstrap
 
@@ -304,7 +308,7 @@ domain: <domain-slug>
 updated: YYYY-MM-DD
 page_count: 0
 tags: [meta, manifest, <domain-slug>]
-summary: "One sentence describing what this domain covers and what kind of source or question routes here. The classification step in /ingest and /query reads ONLY this line."
+summary: "One sentence describing what this domain covers and what kind of source or question routes here. The ingest and query classification steps read ONLY this line."
 depends_on: []
 pinned: false
 ---
@@ -444,7 +448,7 @@ If any of these fail, **stop and diagnose** before proceeding. Do not skip ahead
 
 ```bash
 git init
-git add .gitignore PROGRAM.md README.md scripts/ wiki/
+git add .gitignore PROGRAM.md CLAUDE.md README.md scripts/ wiki/
 git status                     # sanity-check: raw/ should NOT appear
 git commit -m "initial: bootstrap LLM Wiki from PROGRAM.md"
 ```
@@ -506,7 +510,7 @@ Every source page declares how trustworthy its content is, as italic prose near 
 
 - `*Verified against PDF*` — cross-checked against a local PDF copy
 - `*Verified against source code*` — cross-checked against actual source files
-- `*Unverified — fetched via WebFetch*` — pulled through a summarizing web fetch, may be fabricated
+- `*Unverified — fetched via web tool*` — pulled through a summarizing web fetch, may be fabricated
 - `*Unverified — synthesized from README/discussions*` — derived from marketing material, not primary evidence
 
 Future-you and future-agents use this to decide how much to trust the page.
@@ -886,11 +890,11 @@ Move or delete its pages (`git mv` preserves history), `rm -rf wiki/<name>/`, re
 2. Operate it day-to-day (Part II)
 3. Evolve its shape as it grows (Part III)
 
-**This file is not** a standalone artifact dump, tutorial, user manual, or theoretical defense of the design. The accompanying reference repository is part of the contract and includes `SPEC.md` (architectural rationale), `scripts/` (canonical verification and generation tools), `CLAUDE.md` (a worked example of these rules translated into the Claude Code harness), and a `.claude/skills/` directory (skill files showing how individual operations are implemented for that harness).
+**This file is not** a standalone artifact dump, tutorial, user manual, or theoretical defense of the design. The accompanying reference repository is part of the contract and includes `SPEC.md` (architectural rationale), `scripts/` (canonical verification and generation tools), `CLAUDE.md` (harness-agnostic agent operating notes using a compatibility filename), and a `.claude/skills/` directory (optional adapter examples).
 
 ## 2. Harness Portability
 
-References to specific tools throughout this file — `qmd`, `git`, `networkx`, `tiktoken`, `pdfinfo`, WebFetch-style web tools — are examples from the working reference implementation. In a different harness, substitute the local equivalent:
+References to specific tools throughout this file — `qmd`, `git`, `networkx`, `tiktoken`, `pdfinfo`, web fetch tools — are examples from the working reference implementation. In a different harness, substitute the local equivalent:
 
 - **Search**: scoped mechanical keyword search by default (`rg` or a per-domain index such as `qmd search`); hybrid semantic search or LLM reranking only after explicit opt-in and the compute-heavy warning in Part 0 §0.3
 - **Graph analysis**: any library with community detection (or skip the graph trigger and rely on the manifest-pressure trigger, which needs nothing beyond `wc`)
@@ -905,7 +909,7 @@ The **rules** — manifest-first reading, per-domain scoping, slug-based wikilin
 
 After bootstrap, the human will almost certainly want to add vault-specific rules: routing hints for topics that overlap multiple domains, project-specific verification standards, cost constraints for token-heavy operations, pointers to related code repositories, etc.
 
-**Do not edit Parts I-IV of this file** to add those rules — keep PROGRAM.md portable and diff-able against the upstream template. Instead, create a companion file (the reference implementation uses `CLAUDE.md`) that carries the harness-specific and project-specific extensions. That file can reference this one for the portable baseline.
+**Do not edit Parts I-IV of this file** to add those rules — keep PROGRAM.md portable and diff-able against the upstream template. Instead, create or update a companion agent-notes file. The reference implementation uses `CLAUDE.md` as a compatibility filename; mirror it to `AGENTS.md` or another harness-native filename if needed. That file can reference this one for the portable baseline.
 
 ## 4. Quick Reference
 

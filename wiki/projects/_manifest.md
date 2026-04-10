@@ -4,7 +4,7 @@ domain: projects
 updated: 2026-01-01
 page_count: 0
 tags: [meta, manifest, projects]
-summary: "Replace this sentence with a one-line description of what your projects domain covers — typically what you're building, deciding, or operating. The classification step in /ingest reads ONLY this summary line."
+summary: "Replace this sentence with a one-line description of what your projects domain covers — typically what you're building, deciding, or operating. The ingest classification step reads ONLY this summary line."
 depends_on: [research]
 pinned: false
 ---
