@@ -89,11 +89,15 @@ Here is what you will produce. Create this structure in your head before you tou
 ├── scripts/
 │   ├── build-registry.sh
 │   ├── build-xrefs.py
+│   ├── build-analytics.py
 │   ├── check-wikilinks.py
 │   ├── check-frontmatter-domain.py
 │   ├── detect-domain-divergence.py
 │   ├── find-near-duplicates.sh
-│   └── find-attachments.sh
+│   ├── find-attachments.sh
+│   ├── install-wiki-hooks.sh
+│   ├── wiki-maintenance-hook.sh
+│   └── wiki-session-reminder.sh
 └── wiki/
     ├── index.md              # thin pointer index
     ├── overview.md           # one-sentence description per domain
@@ -348,15 +352,19 @@ Pages in OTHER domains that this domain commonly references. Makes cross-domain 
 
 ## Step 7 — Install the scripts
 
-The reference repository is part of this contract, so do not regenerate the scripts from prose when the repo is present. Copy the seven files from the reference repo into `<vault-root>/scripts/` unchanged unless the human explicitly asks for a new implementation:
+The reference repository is part of this contract, so do not regenerate the scripts from prose when the repo is present. Copy the files from the reference repo into `<vault-root>/scripts/` unchanged unless the human explicitly asks for a new implementation:
 
 - `scripts/build-registry.sh`
 - `scripts/build-xrefs.py`
+- `scripts/build-analytics.py`
 - `scripts/check-wikilinks.py`
 - `scripts/check-frontmatter-domain.py`
 - `scripts/detect-domain-divergence.py`
 - `scripts/find-near-duplicates.sh`
 - `scripts/find-attachments.sh`
+- `scripts/install-wiki-hooks.sh`
+- `scripts/wiki-maintenance-hook.sh`
+- `scripts/wiki-session-reminder.sh`
 
 After copying, mark them executable:
 
@@ -372,11 +380,15 @@ vault_root=<absolute path to target vault>
 for f in \
   scripts/build-registry.sh \
   scripts/build-xrefs.py \
+  scripts/build-analytics.py \
   scripts/check-wikilinks.py \
   scripts/check-frontmatter-domain.py \
   scripts/detect-domain-divergence.py \
   scripts/find-near-duplicates.sh \
-  scripts/find-attachments.sh
+  scripts/find-attachments.sh \
+  scripts/install-wiki-hooks.sh \
+  scripts/wiki-maintenance-hook.sh \
+  scripts/wiki-session-reminder.sh
 do
   cmp "$reference_root/$f" "$vault_root/$f" || exit 1
 done
@@ -386,11 +398,15 @@ Contract for these scripts:
 
 - `build-registry.sh <domain>` regenerates only the registry block inside `wiki/<domain>/_manifest.md`.
 - `build-xrefs.py` regenerates global `wiki/xrefs.json` from slug-only wikilinks.
+- `build-analytics.py` consumes `wiki/xrefs.json` and writes a derived analytics block (god nodes, bridges, clusters, recent, stale, questions) into each domain manifest.
 - `check-wikilinks.py` fails on broken slug links or slug collisions.
 - `check-frontmatter-domain.py` fails when page `domain:` frontmatter does not match the parent domain directory.
 - `detect-domain-divergence.py` reports manifest pressure, graph-community split candidates, and conservative merge candidates; it never moves pages.
 - `find-near-duplicates.sh` is optional and adapter-backed; skip or replace it when no scoped search index exists.
 - `find-attachments.sh` maps raw source titles to local attachment files.
+- `install-wiki-hooks.sh` installs optional post-commit / post-checkout git hooks that call `wiki-maintenance-hook.sh`.
+- `wiki-maintenance-hook.sh` rebuilds registries, `xrefs.json`, and analytics after commits; non-blocking on failure.
+- `wiki-session-reminder.sh` prints a harness-agnostic reminder of context-cost rules.
 
 Verify behavior rather than reproducing implementation text:
 

@@ -121,12 +121,13 @@ Use this for a new source in `raw/assets/` or for a URL the human asks you to fi
 9. Update manifest prose if new load-bearing facts entered the wiki; never hand-edit the registry block.
 10. Run `bash scripts/build-registry.sh <domain>`.
 11. Run `python3 scripts/build-xrefs.py`.
-12. Prepend an entry to `wiki/log.md`.
-13. Flag contradictions on both affected pages.
-14. Verify touched pages: frontmatter, domain alignment, wikilinks, math, manifest budget.
-15. If an index adapter is enabled, refresh it in the foreground. Never run embedding or reranking jobs in the background.
-16. Archive processed or skipped sources from `raw/assets/` to `raw/archived/`.
-17. Commit reviewable changes when the human asks or when the repo workflow expects ingest commits.
+12. Run `python3 scripts/build-analytics.py`.
+13. Prepend an entry to `wiki/log.md`.
+14. Flag contradictions on both affected pages.
+15. Verify touched pages: frontmatter, domain alignment, wikilinks, math, manifest budget.
+16. If an index adapter is enabled, refresh it in the foreground. Never run embedding or reranking jobs in the background.
+17. Archive processed or skipped sources from `raw/assets/` to `raw/archived/`.
+18. Commit reviewable changes when the human asks or when the repo workflow expects ingest commits.
 
 Skip and archive, with a log note, when the source is duplicate, derivative, SEO spam, too thin to support reusable facts, or too broad to connect cleanly to wiki themes. Multiple thin sources on the same event can merge into one source page.
 
@@ -163,6 +164,7 @@ Error propagation rule: after fixing a wrong value, grep the wiki for the old va
 - after any page add/move/update that changes summaries, run `bash scripts/build-registry.sh <domain>`
 - after broader content changes, run:
   - `python3 scripts/build-xrefs.py`
+  - `python3 scripts/build-analytics.py`
   - `python3 scripts/check-wikilinks.py`
   - `python3 scripts/check-frontmatter-domain.py`
   - `python3 scripts/detect-domain-divergence.py`

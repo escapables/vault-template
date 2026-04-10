@@ -49,3 +49,35 @@ Pages in OTHER domains that this domain commonly references. This makes cross-do
 - `[[example-source]]` — A placeholder source page showing the required frontmatter fields and the structure agents should follow when filing new sources. Delete this file once you've ingested your first real source.
 
 <!-- REGISTRY:END -->
+
+<!-- ANALYTICS:START (auto-generated, do not edit by hand) -->
+
+## Research Analytics
+
+Generated from `wiki/xrefs.json` on 2026-04-10.
+
+### God nodes
+
+- `[[example-source]]` — inbound 0, outbound 0. A placeholder source page showing the required frontmatter fields and the structure agents should follow when filing new sources. Delete th...
+
+### Cross-domain bridges
+
+- (none)
+
+### Link clusters
+
+- Cluster 1 (1 pages): `[[example-source]]`
+
+### Recently updated
+
+- (none)
+
+### Stale load-bearing pages
+
+- `[[example-source]]` — updated 2026-01-01; degree 0.
+
+### Suggested questions
+
+- What does the wiki cover about example-source?
+
+<!-- ANALYTICS:END -->

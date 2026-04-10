@@ -44,10 +44,12 @@ Each of these is a separate lever. They compose.
 
 - **Structural lint as a read-cost tool.** `check-wikilinks.py`, `check-frontmatter-domain.py`, and `detect-domain-divergence.py` catch drift mechanically. Drift that becomes invisible becomes expensive — a broken wikilink survives in the graph, a mismatched `domain:` means a page gets re-read on every cross-domain op, a bloated manifest silently grows past its budget.
 
+- **Derived analytics** — god nodes, cross-domain bridges, cluster summaries, stale load-bearing pages, suggested questions — computed from `xrefs.json` into each manifest via `scripts/build-analytics.py`
+
+- **Git maintenance hooks** — optional post-commit / post-checkout hooks (`scripts/install-wiki-hooks.sh`) rebuild registries, `xrefs.json`, and analytics automatically. Heavy embedding/reranking stays foreground-only and opt-in.
+
 ### Planned (see Roadmap below)
 
-- **Derived analytics** — god nodes, cross-domain bridges, cluster summaries, stale load-bearing pages, suggested questions — computed from `xrefs.json` into each manifest (Phase 1)
-- **Adapter reminders / hooks** — harness-native reminders or hooks that keep manifests, `xrefs.json`, and analytics current without making a specific harness part of the core spec (Phase 1)
 - **File watcher** — debounced rebuilds on `wiki/` changes (Phase 2)
 - **Multimodal pre-extraction** — LLM-vision pass on `raw/attachments/` images so figures become text-searchable (Phase 2)
 - **Materialized views** — per-god-node aggregation files that answer dense in-domain queries with one read instead of fifteen (Phase 3)
@@ -64,7 +66,7 @@ Each of these is a separate lever. They compose.
 2. Write the global navigation files (`index.md`, `overview.md`, `log.md`, `xrefs.json`)
 3. Ask you to name the first two domains
 4. Write the manifest skeletons
-5. Copy the seven canonical scripts from this repo and verify their behavior
+5. Copy the canonical scripts from this repo and verify their behavior
 6. Verify the build with the structural lints
 7. `git init` and make the first commit
 
@@ -85,21 +87,9 @@ Forking works too. You are starting from the portable spec plus optional adapter
 
 The token optimizations listed above are what's currently implemented. Three planned phases extend them, ordered roughly by payoff-over-effort.
 
-### Phase 1 — Derived analytics + adapter automation
+### Phase 1 — Derived analytics + adapter automation ✓
 
-The biggest remaining gap is that the wiki computes nothing *about itself*. `xrefs.json` has every edge, but no script yet extracts the high-value signals from it. Phase 1 closes that with a portable analytics script; harness automation stays in adapters.
-
-- **`scripts/build-analytics.py`** — consumes `xrefs.json` and writes a derived analytics block into each domain manifest (or a sibling `_analytics.md`) containing:
-  - **God nodes** — top pages by inbound-link degree (the load-bearing pages you would protect from breaking)
-  - **Cross-domain bridges** — pages with the most cross-domain wikilinks (surprising connections the wiki has learned)
-  - **Cluster summaries** — Louvain community detection over the wikilink graph, top clusters per domain with their largest members
-  - **Recently updated** — pages whose `updated:` frontmatter is within the last 14 days
-  - **Stale load-bearing pages** — high-degree pages whose `updated:` is older than 90 days (potential rot)
-  - **Suggested questions** — templated from the god nodes; gives fresh sessions a discoverability layer above the manifest
-- **Harness adapter reminders** — use the harness's native hook or reminder mechanism. The adapter-level goal is deterministic guidance like *"prefer scoped search over raw grep; manifests are the entry point"*.
-- **Git hook adapter** — optional post-commit / post-checkout hooks can rebuild registries, `xrefs.json`, and analytics. Search-index refreshes are adapter-specific; heavy embedding/reranking jobs stay foreground-only and opt-in.
-
-The three items compose: the analytics block lives in the manifest, harness reminders preload or point at the manifest, and optional git hooks keep generated files current.
+Implemented. `scripts/build-analytics.py` consumes `xrefs.json` and writes a derived analytics block into each domain manifest containing: god nodes (top pages by inbound-link degree), cross-domain bridges, link clusters (label-propagation community detection), recently updated pages (14 days), stale load-bearing pages (>90 days, high degree), and suggested questions. `scripts/install-wiki-hooks.sh` installs optional post-commit / post-checkout hooks that rebuild registries, `xrefs.json`, and analytics via `scripts/wiki-maintenance-hook.sh`. `scripts/wiki-session-reminder.sh` provides a harness-agnostic reminder snippet.
 
 ### Phase 2 — Auto-sync + multimodal pre-extraction
 
