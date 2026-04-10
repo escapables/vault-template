@@ -4,7 +4,7 @@ A personal knowledge wiki built on [Andrej Karpathy's LLM Wiki pattern](https://
 
 A flat LLM wiki works beautifully up to ~30-60 pages. Past that, per-session read cost grows roughly linearly with total page count — a 6-source ingest on a flat ~130-page wiki spends ~60% of its tokens reading existing state before writing anything. This layout drops per-ingest read cost by **~65-71%** at that scale by making cost scale with the **touched domain** rather than the whole wiki. The savings compound as the wiki grows.
 
-**This repo is a worked example.** The portable specification is [`PROGRAM.md`](PROGRAM.md) — a self-contained LLM prompt spec that takes an empty directory to a running vault. Use `PROGRAM.md` to adopt the pattern; use this repo to see what the result looks like.
+**This repo is the reference implementation.** The portable contract is [`PROGRAM.md`](PROGRAM.md). Hand this repo plus `PROGRAM.md` to an LLM to adopt the pattern; the repo supplies canonical artifacts and `PROGRAM.md` defines the invariants and verification gates.
 
 ---
 
@@ -56,19 +56,19 @@ Each of these is a separate lever. They compose.
 
 ## Getting started
 
-**Initialization is done through [`PROGRAM.md`](PROGRAM.md), not by cloning this repo.** This repo is a reference example of what `PROGRAM.md` produces.
+**Initialization is guided by [`PROGRAM.md`](PROGRAM.md), using this repo as the reference implementation.** `PROGRAM.md` is no longer a standalone artifact dump; the repo is part of the contract.
 
-`PROGRAM.md` is a self-contained, harness-agnostic build program. Hand it to an LLM in any harness and it will:
+`PROGRAM.md` is a harness-agnostic build-and-operate contract. Hand this repo to an LLM in any harness and it will:
 
 1. Create the directory skeleton (`raw/`, `wiki/`, `scripts/`, `.gitignore`)
 2. Write the global navigation files (`index.md`, `overview.md`, `log.md`, `xrefs.json`)
 3. Ask you to name the first two domains
 4. Write the manifest skeletons
-5. Install the seven scripts (inlined verbatim in `PROGRAM.md` — no external downloads)
+5. Copy the seven canonical scripts from this repo and verify their behavior
 6. Verify the build with the structural lints
 7. `git init` and make the first commit
 
-After bootstrap, `PROGRAM.md` also specifies the three day-to-day operations (`ingest`, `query`, `health`), the page conventions, the context-cost rules, the invariants, and the domain evolution workflow (split / merge). A single LLM reading `PROGRAM.md` alone has everything it needs to build and run the wiki.
+After bootstrap, `PROGRAM.md` also specifies the three day-to-day operations (`ingest`, `query`, `health`), the page conventions, the context-cost rules, the invariants, and the domain evolution workflow (split / merge). Verification defines success; the reference repo supplies the exact scripts and example files.
 
 ### If you want to fork this repo directly
 
@@ -131,7 +131,7 @@ Views must be regenerated reliably — stale views are worse than no views. Defe
 
 | File | Purpose |
 |---|---|
-| [`PROGRAM.md`](PROGRAM.md) | Portable, harness-agnostic build-and-operate program. **Start here to adopt the pattern.** |
+| [`PROGRAM.md`](PROGRAM.md) | Portable, harness-agnostic build-and-operate contract. **Start here to adopt the pattern.** |
 | [`CLAUDE.md`](CLAUDE.md) | Worked example of the operating schema translated into the Claude Code harness. |
 | [`SPEC.md`](SPEC.md) | Architectural rationale and numeric invariants (budgets, thresholds). |
 | [`README.md`](README.md) | This file. |
@@ -156,9 +156,9 @@ Vault/
 │       ├── entities/
 │       ├── concepts/
 │       └── analyses/
-├── scripts/               # Lint + automation (all seven inlined in PROGRAM.md)
+├── scripts/               # Canonical lint + automation copied by PROGRAM.md
 ├── .claude/skills/        # Claude Code skill files (ingest / query / health)
-├── PROGRAM.md             # Portable build-and-operate program
+├── PROGRAM.md             # Portable build-and-operate contract
 ├── CLAUDE.md              # Harness-specific worked example
 ├── SPEC.md                # Architecture rationale
 └── README.md

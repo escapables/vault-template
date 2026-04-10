@@ -47,7 +47,7 @@ Move or delete its pages, remove any optional search collection, refresh the sea
 
 ```
 Vault/
-├── PROGRAM.md                 # Portable build-and-operate program
+├── PROGRAM.md                 # Portable build-and-operate contract
 ├── CLAUDE.md                  # Claude Code adapter example
 ├── SPEC.md                    # This file (architecture)
 ├── README.md

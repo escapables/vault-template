@@ -1,16 +1,16 @@
 ---
-title: "LLM Wiki — Build Program"
+title: "LLM Wiki — Build and Operate Contract"
 version: 2
 status: distribution
 ---
 
-# LLM Wiki — Build Program
+# LLM Wiki — Build and Operate Contract
 
-A single-file, harness-agnostic specification an LLM can follow to **build** a domain-atomized personal knowledge wiki from an empty directory, and then **operate** it. Read this file end-to-end; by the last page you will have produced the same repository structure found in the accompanying reference example, plus enough operating instructions to run it indefinitely.
+This is a harness-agnostic contract an LLM can follow to **build** and **operate** a domain-atomized personal knowledge wiki using the accompanying reference repository. The reference repo is assumed to be present because this file ships inside it; use the repo's scripts and example files as canonical artifacts, and use this file to define the invariants and verification gates.
 
 This pattern is an evolution of the [canonical LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) that replaces the single flat namespace with physically separated per-domain directories. A flat layout works at ~30-60 pages; beyond that, per-session reading cost scales with total page count. Domain atomization fixes this by making per-session reads scale with the **touched** domain only, and replaces honor-system scoping with mechanical enforcement.
 
-> **How to read this file.** Part I is a linear build procedure (Steps 1-9). Part II specifies the three operations (ingest, query, health) you will run against the wiki after it is built. Part III covers how domains evolve (split / merge) as the wiki grows. Part IV records meta-notes about portability. Do Part I in order before attempting anything in Part II.
+> **How to read this file.** Part I is a linear build contract (Steps 1-9). Part II specifies the three operations (ingest, query, health) you will run against the wiki after it is built. Part III covers how domains evolve (split / merge) as the wiki grows. Part IV records meta-notes about portability. Do Part I in order before attempting anything in Part II.
 
 ---
 
@@ -39,7 +39,13 @@ Before Step 1, confirm the following are available:
 
 ### 0.3 Portability contract
 
-Core requirements are file read/write, shell, git, Python, and the ability to ask the human clarifying questions. Optional web fetch helps URL ingests and staleness checks, but the wiki still works without it.
+Core requirements are access to this reference repository, file read/write, shell, git, Python, and the ability to ask the human clarifying questions. Optional web fetch helps URL ingests and staleness checks, but the wiki still works without it.
+
+Path variables used below:
+
+- `<reference-root>` — the directory containing this `PROGRAM.md`, `scripts/`, `SPEC.md`, and the example `wiki/`.
+- `<vault-root>` — the target vault directory being built or operated.
+- If bootstrapping in place from a fork of this repo, `<reference-root>` and `<vault-root>` are the same directory. In that case, do not copy files over themselves; verify the existing artifacts instead.
 
 The default search mode is safe mechanical search: scoped keyword search inside the chosen domain before reading page bodies. Use `rg` if nothing else exists. Low page counts do not need an index; around ~80 articles/pages, a scoped index such as `qmd search` usually starts paying for itself. Treat ~80 as a practical threshold, not an invariant. Do not make LLM reranking, vector search, MCP tools, local GGUF models, Claude hooks, Codex skills/plugins, or any harness-specific feature part of the core path.
 
@@ -64,7 +70,7 @@ Harness-specific features belong in adapter files or examples. Each implementing
 
 # Part I — Build the Wiki
 
-Steps 1 through 9 take an empty directory to a working, lint-clean, git-initialized vault. Do them in order.
+Steps 1 through 9 take an empty target directory to a working, lint-clean, git-initialized vault by copying canonical artifacts from the reference repo and verifying the resulting contracts. Do them in order.
 
 ## Step 1 — Target layout
 
@@ -73,7 +79,7 @@ Here is what you will produce. Create this structure in your head before you tou
 ```
 <vault-root>/
 ├── .gitignore
-├── PROGRAM.md                # this file — copy it into the vault
+├── PROGRAM.md                # copied from <reference-root>/PROGRAM.md unless bootstrapping in place
 ├── README.md                 # a short human-facing intro (Step 9)
 ├── raw/                      # sources (gitignored)
 │   ├── assets/               # inbox — unprocessed
@@ -110,6 +116,12 @@ Here is what you will produce. Create this structure in your head before you tou
 
 ```bash
 mkdir -p raw/assets raw/archived raw/attachments scripts wiki
+```
+
+If `<reference-root>` and `<vault-root>` are different directories, copy this contract into the target vault now:
+
+```bash
+cp <reference-root>/PROGRAM.md <vault-root>/PROGRAM.md
 ```
 
 Do not create the domain subdirectories yet — you choose their names in Step 5 with the human.
@@ -328,1008 +340,61 @@ Pages in OTHER domains that this domain commonly references. Makes cross-domain 
 <!-- REGISTRY:END -->
 ```
 
-**Important**: do not write speculative `[[slug]]` wikilinks into the placeholder sections. The link-checker in Step 7 fails on any `[[slug]]` whose target does not exist. Leave placeholder bullets as plain prose.
+**Important**: do not write speculative `[[slug]]` wikilinks into the placeholder sections. Verification fails on any `[[slug]]` whose target does not exist. Leave placeholder bullets as plain prose.
 
 ## Step 7 — Install the scripts
 
-Seven scripts live in `scripts/`. Each is inlined below verbatim — write them to disk exactly. After writing, mark the shell scripts executable:
+The reference repository is part of this contract, so do not regenerate the scripts from prose when the repo is present. Copy the seven files from the reference repo into `<vault-root>/scripts/` unchanged unless the human explicitly asks for a new implementation:
+
+- `scripts/build-registry.sh`
+- `scripts/build-xrefs.py`
+- `scripts/check-wikilinks.py`
+- `scripts/check-frontmatter-domain.py`
+- `scripts/detect-domain-divergence.py`
+- `scripts/find-near-duplicates.sh`
+- `scripts/find-attachments.sh`
+
+After copying, mark them executable:
 
 ```bash
 chmod +x scripts/*.sh scripts/*.py
 ```
 
-All scripts assume they live in `<vault-root>/scripts/` and compute paths relative to `<vault-root>`.
-
-### 7.1 `scripts/build-registry.sh`
-
-Regenerates the `<!-- REGISTRY:START ... REGISTRY:END -->` block inside a domain's manifest from the pages in that domain. Sorts alphabetically. Reads only `title` and `summary` frontmatter from each page — no body scanning.
+Verify script identity before behavior. If `<reference-root>` and `<vault-root>` are different, compare each copied script against the reference:
 
 ```bash
-#!/usr/bin/env bash
-# Regenerate the auto-generated page registry block inside a domain manifest.
-#
-# Usage:
-#   scripts/build-registry.sh <domain>             # write the block
-#   scripts/build-registry.sh --dry-run <domain>   # print what would be written
-
-set -euo pipefail
-
-dry_run=false
-if [ "${1:-}" = "--dry-run" ]; then
-  dry_run=true
-  shift
-fi
-
-if [ $# -lt 1 ]; then
-  echo "usage: $0 [--dry-run] <domain>" >&2
-  exit 2
-fi
-
-domain=$1
-script_dir=$(dirname -- "$0")
-cd -- "$script_dir/.."
-
-domain_dir="wiki/$domain"
-manifest="$domain_dir/_manifest.md"
-
-if [ ! -d "$domain_dir" ]; then
-  echo "error: domain directory not found: $domain_dir" >&2
-  exit 1
-fi
-
-block=$(python3 - "$domain_dir" <<'PYEOF'
-import os, re, sys
-from pathlib import Path
-
-domain_dir = Path(sys.argv[1])
-title_re = re.compile(r'^title:\s*"?([^"\n]+?)"?\s*$', re.M)
-summary_re = re.compile(r'^summary:\s*"?(.+?)"?\s*$', re.M)
-
-sections = [
-    ("Entities", "entities"),
-    ("Concepts", "concepts"),
-    ("Analyses", "analyses"),
-    ("Sources",  "sources"),
-]
-
-lines = ["<!-- REGISTRY:START (auto-generated, do not edit by hand) -->"]
-
-for header, subdir in sections:
-    sub = domain_dir / subdir
-    if not sub.is_dir():
-        continue
-    pages = sorted(sub.glob("*.md"))
-    if not pages:
-        continue
-    lines.append("")
-    lines.append(f"### {header}")
-    lines.append("")
-    for p in pages:
-        try:
-            content = p.read_text(encoding="utf-8")[:2500]
-        except OSError:
-            continue
-        tm = title_re.search(content)
-        sm = summary_re.search(content)
-        title = tm.group(1).strip() if tm else p.stem
-        summary = sm.group(1).strip() if sm else ""
-        slug = p.stem
-        summary_one_line = summary.split("\n")[0]
-        if summary_one_line:
-            lines.append(f"- `[[{slug}]]` — {summary_one_line}")
-        else:
-            lines.append(f"- `[[{slug}]]` — {title}")
-
-lines.append("")
-lines.append("<!-- REGISTRY:END -->")
-print("\n".join(lines))
-PYEOF
-)
-
-if $dry_run; then
-  echo "=== DRY RUN: would write registry block to $manifest ==="
-  echo "$block"
-  exit 0
-fi
-
-if [ ! -f "$manifest" ]; then
-  echo "error: manifest not found: $manifest" >&2
-  exit 1
-fi
-
-python3 - "$manifest" "$block" <<'PYEOF'
-import re, sys
-from pathlib import Path
-
-manifest_path = Path(sys.argv[1])
-new_block = sys.argv[2]
-
-content = manifest_path.read_text(encoding="utf-8")
-
-start_marker = "<!-- REGISTRY:START"
-end_marker = "<!-- REGISTRY:END -->"
-
-start_idx = content.find(start_marker)
-end_idx = content.find(end_marker)
-
-if start_idx >= 0 and end_idx > start_idx:
-    end_full = end_idx + len(end_marker)
-    new_content = content[:start_idx] + new_block + content[end_full:]
-elif start_idx < 0 and end_idx < 0:
-    if not content.endswith("\n"):
-        content += "\n"
-    new_content = content + "\n" + new_block + "\n"
-else:
-    print("error: manifest has only one of the REGISTRY markers; refusing to mangle", file=sys.stderr)
-    sys.exit(1)
-
-manifest_path.write_text(new_content, encoding="utf-8")
-print(f"OK: registry block updated in {manifest_path}")
-PYEOF
+reference_root=<absolute path to reference repo>
+vault_root=<absolute path to target vault>
+for f in \
+  scripts/build-registry.sh \
+  scripts/build-xrefs.py \
+  scripts/check-wikilinks.py \
+  scripts/check-frontmatter-domain.py \
+  scripts/detect-domain-divergence.py \
+  scripts/find-near-duplicates.sh \
+  scripts/find-attachments.sh
+do
+  cmp "$reference_root/$f" "$vault_root/$f" || exit 1
+done
 ```
 
-### 7.2 `scripts/build-xrefs.py`
-
-Walks the entire wiki and rebuilds `wiki/xrefs.json`: for every page, records its file path, domain, category, outbound wikilinks, inbound wikilinks, tags, updated date, and summary. Auto-discovers domain directories. Skips top-level nav files.
-
-```python
-#!/usr/bin/env python3
-"""Regenerate wiki/xrefs.json by walking every domain directory.
-
-xrefs.json is the precomputed wikilink graph for the whole vault. Use it
-instead of grep to check what links to a page — it is the cheap way to
-answer "what connects to X" without reading any page.
-"""
-
-from __future__ import annotations
-
-import json
-import re
-import sys
-from pathlib import Path
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
-WIKI_ROOT = REPO_ROOT / "wiki"
-OUT_PATH = WIKI_ROOT / "xrefs.json"
-
-LINK_RE = re.compile(r"!?\[\[([^\]\\|#]+?)(?:\\?[#|][^\]]*)?\]\]")
-
-
-def discover_domains() -> set[str]:
-    if not WIKI_ROOT.is_dir():
-        return set()
-    return {
-        p.name
-        for p in WIKI_ROOT.iterdir()
-        if p.is_dir() and not p.name.startswith(("_", "."))
-    }
-
-
-DOMAINS = discover_domains()
-
-
-def strip_code_blocks(text: str) -> str:
-    out = []
-    in_fence = False
-    for line in text.splitlines():
-        if line.lstrip().startswith("```"):
-            in_fence = not in_fence
-            out.append("")
-            continue
-        out.append("" if in_fence else line)
-    return "\n".join(out)
-
-
-def parse_frontmatter(text: str) -> dict:
-    if not text.startswith("---"):
-        return {}
-    end = text.find("\n---", 4)
-    if end == -1:
-        return {}
-    block = text[4:end]
-    fm: dict = {}
-    list_key: str | None = None
-    for line in block.splitlines():
-        if not line.strip():
-            list_key = None
-            continue
-        if line.startswith("- ") and list_key:
-            fm[list_key].append(line[2:].strip().strip('"').strip("'"))
-            continue
-        if ":" not in line:
-            list_key = None
-            continue
-        key, _, value = line.partition(":")
-        key = key.strip()
-        value = value.strip()
-        if not value:
-            fm[key] = []
-            list_key = key
-            continue
-        if value.startswith("[") and value.endswith("]"):
-            items = [v.strip().strip('"').strip("'") for v in value[1:-1].split(",")]
-            fm[key] = [v for v in items if v]
-            list_key = None
-            continue
-        fm[key] = value.strip('"').strip("'")
-        list_key = None
-    return fm
-
-
-def extract_outbound(text: str) -> list[str]:
-    clean = strip_code_blocks(text)
-    links: list[str] = []
-    for m in LINK_RE.finditer(clean):
-        target = m.group(1).strip()
-        if target.startswith("raw/") or target.startswith("wiki/"):
-            continue
-        base = target.rsplit("/", 1)[-1].rstrip("\\")
-        if "." in base and not base.endswith(".md"):
-            continue
-        slug = base[:-3] if base.endswith(".md") else base
-        if slug:
-            links.append(slug)
-    seen: set[str] = set()
-    unique: list[str] = []
-    for s in links:
-        if s not in seen:
-            seen.add(s)
-            unique.append(s)
-    return unique
-
-
-def domain_key_for(path: Path) -> tuple[str, str, str]:
-    rel = path.relative_to(WIKI_ROOT).parts
-    if len(rel) >= 2 and rel[0] in DOMAINS:
-        domain = rel[0]
-        if path.stem.startswith("_"):
-            category = "manifest"
-            slug_key = f"{domain}/_manifest"
-        else:
-            category = rel[1] if len(rel) >= 3 else "root"
-            slug_key = path.stem
-    else:
-        domain = "global"
-        category = "root"
-        slug_key = path.stem
-    return slug_key, domain, category
-
-
-def main() -> int:
-    if not WIKI_ROOT.is_dir():
-        print(f"ERROR: {WIKI_ROOT} not found", file=sys.stderr)
-        return 2
-
-    entries: dict[str, dict] = {}
-
-    for md in sorted(WIKI_ROOT.rglob("*.md")):
-        rel = md.relative_to(WIKI_ROOT).parts
-        if len(rel) == 1 and rel[0] in ("index.md", "overview.md", "log.md"):
-            continue
-        try:
-            raw = md.read_text(encoding="utf-8")
-        except OSError:
-            continue
-
-        slug_key, domain, category = domain_key_for(md)
-        fm = parse_frontmatter(raw)
-        outbound = extract_outbound(raw)
-
-        entries[slug_key] = {
-            "file": str(md.relative_to(REPO_ROOT)),
-            "domain": domain,
-            "category": category,
-            "outbound": outbound,
-            "inbound": [],
-            "tags": fm.get("tags", []) if isinstance(fm.get("tags"), list) else [],
-            "updated": fm.get("updated", ""),
-            "summary": fm.get("summary", ""),
-        }
-
-    slug_to_key = {}
-    for key in entries:
-        if "/" not in key:
-            slug_to_key[key] = key
-    for key, entry in entries.items():
-        for target in entry["outbound"]:
-            dest_key = slug_to_key.get(target)
-            if dest_key and dest_key in entries:
-                if key not in entries[dest_key]["inbound"]:
-                    entries[dest_key]["inbound"].append(key)
-
-    with OUT_PATH.open("w", encoding="utf-8") as f:
-        json.dump(entries, f, indent=2, ensure_ascii=False)
-
-    print(f"OK: wrote {len(entries)} entries to {OUT_PATH.relative_to(REPO_ROOT)}")
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
-```
-
-### 7.3 `scripts/check-wikilinks.py`
-
-Verifies that every `[[slug]]` in the wiki resolves to an existing page or attachment. Resolves by basename across the whole vault, matching the behavior of most Obsidian-style renderers. Skips wikilinks inside fenced code blocks.
-
-```python
-#!/usr/bin/env python3
-"""Find broken wikilinks across the wiki.
-
-Handles:
-  [[slug]]                       plain reference
-  [[slug|Display Text]]          with display alias
-  [[slug\\|Display Text]]        escaped pipe (markdown table cells)
-  [[slug#Section]]               with section anchor
-  ![[image.png]]                 image embed (checked against raw/)
-
-Skips:
-  - Links pointing into raw/ or wiki/ (those are raw paths, not slugs)
-  - Links inside fenced code blocks
-"""
-
-import re
-import sys
-from pathlib import Path
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
-WIKI_ROOT = REPO_ROOT / "wiki"
-RAW_ROOT = REPO_ROOT / "raw"
-
-LINK_RE = re.compile(r"!?\[\[([^\]\\|#]+?)(?:\\?[#|][^\]]*)?\]\]")
-
-
-def strip_code_blocks(text: str) -> str:
-    out = []
-    in_fence = False
-    for line in text.splitlines():
-        if line.lstrip().startswith("```"):
-            in_fence = not in_fence
-            out.append("")
-            continue
-        out.append("" if in_fence else line)
-    return "\n".join(out)
-
-
-def build_filename_index() -> tuple[set[str], set[str]]:
-    md_names = set()
-    if WIKI_ROOT.is_dir():
-        for p in WIKI_ROOT.rglob("*.md"):
-            md_names.add(p.stem)
-    attachments = set()
-    if RAW_ROOT.is_dir():
-        for p in RAW_ROOT.rglob("*"):
-            if p.is_file():
-                attachments.add(p.name)
-    return md_names, attachments
-
-
-def main() -> int:
-    md_index, attachment_index = build_filename_index()
-
-    broken: list[tuple[Path, int, str]] = []
-    total_links = 0
-
-    for md in sorted(WIKI_ROOT.rglob("*.md")):
-        try:
-            raw = md.read_text(encoding="utf-8")
-        except OSError:
-            continue
-        clean = strip_code_blocks(raw)
-        for line_num, line in enumerate(clean.splitlines(), start=1):
-            for m in LINK_RE.finditer(line):
-                target = m.group(1).strip()
-                total_links += 1
-
-                if target.startswith("raw/") or target.startswith("wiki/"):
-                    continue
-
-                base = target.rsplit("/", 1)[-1]
-
-                if "." in base and not base.endswith(".md"):
-                    if base in attachment_index or base in md_index:
-                        continue
-                    broken.append((md, line_num, target))
-                    continue
-
-                slug = base[:-3] if base.endswith(".md") else base
-                if slug not in md_index:
-                    broken.append((md, line_num, target))
-
-    if broken:
-        print(f"FAIL: {len(broken)} broken wikilinks across {total_links} total\n")
-        for md, line_num, target in broken:
-            rel = md.relative_to(REPO_ROOT)
-            print(f"  {rel}:{line_num} -> [[{target}]]")
-        return 1
-
-    print(f"OK: {total_links} wikilinks scanned, all resolve")
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
-```
-
-### 7.4 `scripts/check-frontmatter-domain.py`
-
-Verifies that every page's `domain:` frontmatter matches its parent domain directory. Auto-discovers domain directories as immediate children of `wiki/`.
-
-```python
-#!/usr/bin/env python3
-"""Verify every wiki page's `domain:` frontmatter matches its parent directory.
-
-Used by the health check to enforce the per-domain layout invariant.
-Auto-discovers domain directories as immediate children of wiki/.
-"""
-
-import re
-import sys
-from pathlib import Path
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
-WIKI_ROOT = REPO_ROOT / "wiki"
-
-DOMAIN_RE = re.compile(r"^domain:\s*([\w-]+)\s*$", re.MULTILINE)
-
-
-def discover_domains() -> list[str]:
-    if not WIKI_ROOT.is_dir():
-        return []
-    return sorted(
-        p.name
-        for p in WIKI_ROOT.iterdir()
-        if p.is_dir() and not p.name.startswith(("_", "."))
-    )
-
-
-def scan_domain(domain_dir: Path) -> list[tuple[Path, str | None]]:
-    results = []
-    if not domain_dir.is_dir():
-        return results
-    for md in sorted(domain_dir.rglob("*.md")):
-        if md.name == "_manifest.md":
-            continue
-        try:
-            content = md.read_text(encoding="utf-8")[:2500]
-        except OSError:
-            results.append((md, None))
-            continue
-        m = DOMAIN_RE.search(content)
-        results.append((md, m.group(1) if m else None))
-    return results
-
-
-def main() -> int:
-    if len(sys.argv) > 2:
-        print("usage: check-frontmatter-domain.py [wiki/<domain>]", file=sys.stderr)
-        return 2
-
-    if len(sys.argv) == 2:
-        target = Path(sys.argv[1])
-        if not target.is_absolute():
-            target = REPO_ROOT / target
-        domains_to_check = [(target.name, target)]
-    else:
-        domains_to_check = [(d, WIKI_ROOT / d) for d in discover_domains()]
-
-    any_dir_exists = False
-    mismatches: list[tuple[Path, str, str | None]] = []
-    total_checked = 0
-
-    for expected_domain, dir_path in domains_to_check:
-        if not dir_path.is_dir():
-            continue
-        any_dir_exists = True
-        for md, found in scan_domain(dir_path):
-            total_checked += 1
-            if found != expected_domain:
-                mismatches.append((md, expected_domain, found))
-
-    if not any_dir_exists:
-        print("(no domain directories exist yet — nothing to check)")
-        return 0
-
-    if mismatches:
-        print(f"FAIL: {len(mismatches)} mismatches across {total_checked} pages\n")
-        for md, expected, found in mismatches:
-            rel = md.relative_to(REPO_ROOT)
-            found_str = found if found else "(missing)"
-            print(f"  {rel}: domain={found_str}, expected={expected}")
-        return 1
-
-    print(f"OK: {total_checked} pages, all `domain:` fields match their parent directory")
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
-```
-
-### 7.5 `scripts/detect-domain-divergence.py`
-
-Runs two independent triggers (§III.2): **manifest-pressure** (cheap, primary — works with no extra dependencies) and **graph community detection** (richer, secondary — requires `networkx`). Also surfaces merge candidates. This is the scanner you run when you suspect a domain is outgrowing its manifest.
-
-```python
-#!/usr/bin/env python3
-"""Detect domains that should be split or merged.
-
-Two independent split triggers:
-  A. Manifest-pressure (cheap, primary): prose token count of each
-     domain's _manifest.md (budget = 3,000 tokens). Works with wc alone.
-  B. Graph community detection (richer, secondary): Louvain community
-     detection on each domain's wikilink subgraph. Requires networkx.
-
-Split thresholds (manifest):
-  >= 2,500 tokens → warning
-  >= 3,000 tokens → split candidate
-  >= 3,500 tokens → hard fail
-
-Split thresholds (graph):
-  Q >= 0.40, 2+ communities each >= 15 pages, top-2 cover >= 80%,
-  cross-cluster edge density < 25% of within-cluster density
-
-Merge candidates:
-  domain has < 10 pages
-  >= 80% of outbound wikilinks point to a single other domain
-  manifest prose < 1,000 tokens
-  domain NOT marked pinned: true
-"""
-
-from __future__ import annotations
-
-import argparse
-import re
-import sys
-from pathlib import Path
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
-WIKI_ROOT = REPO_ROOT / "wiki"
-
-WORDS_PER_TOKEN = 0.75
-BUDGET_WARN = 2_500
-BUDGET_SPLIT = 3_000
-BUDGET_HARD_FAIL = 3_500
-MIN_COMMUNITY_SIZE = 15
-MODULARITY_THRESHOLD = 0.40
-TOP_TWO_COVERAGE = 0.80
-CROSS_DENSITY_RATIO = 0.25
-
-MERGE_PAGE_LIMIT = 10
-MERGE_PROSE_LIMIT = 1_000
-MERGE_OUTBOUND_FRACTION = 0.80
-
-LINK_RE = re.compile(r"!?\[\[([^\]\\|#]+?)(?:\\?[#|][^\]]*)?\]\]")
-REGISTRY_START = "<!-- REGISTRY:START"
-
-
-def strip_code_blocks(text: str) -> str:
-    out = []
-    in_fence = False
-    for line in text.splitlines():
-        if line.lstrip().startswith("```"):
-            in_fence = not in_fence
-            out.append("")
-            continue
-        out.append("" if in_fence else line)
-    return "\n".join(out)
-
-
-def list_domains() -> list[str]:
-    return sorted(
-        p.name for p in WIKI_ROOT.iterdir()
-        if p.is_dir() and (p / "_manifest.md").exists()
-    )
-
-
-def load_manifest_prose(domain: str) -> tuple[int, str, bool]:
-    manifest = WIKI_ROOT / domain / "_manifest.md"
-    text = manifest.read_text(encoding="utf-8")
-    prose = text.split(REGISTRY_START)[0]
-    words = len(prose.split())
-    tokens = int(words * WORDS_PER_TOKEN)
-    pinned = "pinned: true" in prose
-    return tokens, prose, pinned
-
-
-def collect_domain_pages(domain: str) -> dict[str, Path]:
-    pages: dict[str, Path] = {}
-    root = WIKI_ROOT / domain
-    for p in root.rglob("*.md"):
-        if p.stem.startswith("_"):
-            continue
-        pages[p.stem] = p
-    return pages
-
-
-def collect_all_page_domains() -> dict[str, str]:
-    mapping: dict[str, str] = {}
-    for domain in list_domains():
-        for slug in collect_domain_pages(domain):
-            mapping[slug] = domain
-    return mapping
-
-
-def extract_outbound(path: Path) -> list[str]:
-    try:
-        raw = path.read_text(encoding="utf-8")
-    except OSError:
-        return []
-    clean = strip_code_blocks(raw)
-    links: list[str] = []
-    for m in LINK_RE.finditer(clean):
-        target = m.group(1).strip()
-        if target.startswith("raw/") or target.startswith("wiki/"):
-            continue
-        base = target.rsplit("/", 1)[-1]
-        if "." in base and not base.endswith(".md"):
-            continue
-        slug = base[:-3] if base.endswith(".md") else base
-        if slug:
-            links.append(slug)
-    return links
-
-
-def build_domain_graph(domain: str, page_domain: dict[str, str]):
-    import networkx as nx
-    pages = collect_domain_pages(domain)
-    g = nx.Graph()
-    for slug in pages:
-        g.add_node(slug)
-    for slug, path in pages.items():
-        for target in extract_outbound(path):
-            if target == slug:
-                continue
-            if page_domain.get(target) == domain and target in pages:
-                g.add_edge(slug, target)
-    return g
-
-
-def outbound_cross_domain_counts(domain: str, page_domain: dict[str, str]) -> dict[str, int]:
-    pages = collect_domain_pages(domain)
-    counts: dict[str, int] = {}
-    for path in pages.values():
-        for target in extract_outbound(path):
-            dest = page_domain.get(target)
-            if dest and dest != domain:
-                counts[dest] = counts.get(dest, 0) + 1
-    return counts
-
-
-def run_graph_trigger(domain: str, page_domain: dict[str, str]) -> dict:
-    try:
-        import networkx as nx
-        from networkx.algorithms import community as nx_community
-    except ImportError:
-        return {"skipped": True, "reason": "networkx not installed"}
-
-    g = build_domain_graph(domain, page_domain)
-    node_count = g.number_of_nodes()
-    edge_count = g.number_of_edges()
-    if node_count < 2 * MIN_COMMUNITY_SIZE:
-        return {
-            "skipped": False,
-            "flag": False,
-            "note": f"only {node_count} pages; need >= {2 * MIN_COMMUNITY_SIZE} for a meaningful split",
-            "node_count": node_count,
-            "edge_count": edge_count,
-        }
-
-    communities = nx_community.louvain_communities(g, seed=42)
-    q = nx_community.modularity(g, communities)
-    communities_sorted = sorted(communities, key=len, reverse=True)
-    sizes = [len(c) for c in communities_sorted]
-    big = [c for c in communities_sorted if len(c) >= MIN_COMMUNITY_SIZE]
-    top_two_share = sum(sizes[:2]) / node_count if node_count else 0
-
-    cross_density_ok = None
-    if len(big) >= 2:
-        within_edges = 0
-        within_capacity = 0
-        for c in big:
-            sub = g.subgraph(c)
-            n = sub.number_of_nodes()
-            within_edges += sub.number_of_edges()
-            within_capacity += n * (n - 1) // 2
-        cross_edges = edge_count - within_edges
-        cross_capacity = 0
-        for i, c1 in enumerate(big):
-            for c2 in big[i + 1:]:
-                cross_capacity += len(c1) * len(c2)
-        within_density = within_edges / within_capacity if within_capacity else 0
-        cross_density = cross_edges / cross_capacity if cross_capacity else 0
-        if within_density > 0:
-            cross_density_ok = cross_density < CROSS_DENSITY_RATIO * within_density
-        else:
-            cross_density_ok = False
-
-    flag = (
-        q >= MODULARITY_THRESHOLD
-        and len(big) >= 2
-        and top_two_share >= TOP_TWO_COVERAGE
-        and cross_density_ok is True
-    )
-
-    def top_pages(cluster: set[str], k: int = 5) -> list[str]:
-        return [
-            node for node, _ in sorted(
-                g.subgraph(cluster).degree(), key=lambda x: x[1], reverse=True
-            )[:k]
-        ]
-
-    return {
-        "skipped": False,
-        "flag": flag,
-        "node_count": node_count,
-        "edge_count": edge_count,
-        "modularity": q,
-        "community_count": len(communities_sorted),
-        "community_sizes": sizes,
-        "top_two_share": top_two_share,
-        "cross_density_ok": cross_density_ok,
-        "communities_top": [top_pages(c) for c in communities_sorted],
-    }
-
-
-def run_manifest_trigger(domain: str) -> dict:
-    tokens, _, pinned = load_manifest_prose(domain)
-    if tokens >= BUDGET_HARD_FAIL:
-        level = "hard_fail"
-    elif tokens >= BUDGET_SPLIT:
-        level = "split_candidate"
-    elif tokens >= BUDGET_WARN:
-        level = "warning"
-    else:
-        level = "ok"
-    return {"tokens": tokens, "budget": BUDGET_SPLIT, "level": level, "pinned": pinned}
-
-
-def run_merge_trigger(domain, manifest_result, page_domain, page_counts):
-    n_pages = page_counts.get(domain, 0)
-    if manifest_result["pinned"]:
-        return {"flag": False, "reason": "pinned: true"}
-    if n_pages >= MERGE_PAGE_LIMIT:
-        return {"flag": False, "reason": f"{n_pages} pages >= {MERGE_PAGE_LIMIT}"}
-    if manifest_result["tokens"] >= MERGE_PROSE_LIMIT:
-        return {"flag": False, "reason": f"manifest prose {manifest_result['tokens']} tok >= {MERGE_PROSE_LIMIT}"}
-    cross_counts = outbound_cross_domain_counts(domain, page_domain)
-    if not cross_counts:
-        return {"flag": False, "reason": "no cross-domain outbound links"}
-    total = sum(cross_counts.values())
-    top_dest, top_count = max(cross_counts.items(), key=lambda x: x[1])
-    share = top_count / total
-    if share < MERGE_OUTBOUND_FRACTION:
-        return {"flag": False, "reason": f"top destination {top_dest} only {share:.0%} of outbound"}
-    return {
-        "flag": True,
-        "target_domain": top_dest,
-        "outbound_share": share,
-        "page_count": n_pages,
-        "prose_tokens": manifest_result["tokens"],
-    }
-
-
-def format_report(domain, manifest, graph, merge, n_pages):
-    lines = [f"=== {domain} ({n_pages} pages) ==="]
-    lines.append(f"  manifest prose: {manifest['tokens']} tokens (budget {manifest['budget']}, level: {manifest['level']})")
-    if manifest["pinned"]:
-        lines.append("    pinned: true — merge suppression active")
-
-    if graph.get("skipped"):
-        lines.append(f"  graph trigger: SKIPPED ({graph['reason']})")
-    else:
-        if "modularity" not in graph:
-            lines.append(f"  graph trigger: {graph['note']}")
-        else:
-            lines.append(
-                f"  graph: Q={graph['modularity']:.3f}, "
-                f"{graph['community_count']} communities, "
-                f"sizes={graph['community_sizes']}, "
-                f"top-2 cover {graph['top_two_share']:.0%}"
-            )
-            if graph.get("flag"):
-                lines.append("  >> DOMAIN SPLIT CANDIDATE (graph trigger)")
-                for i, top_pages in enumerate(graph["communities_top"][:3]):
-                    lines.append(
-                        f"     Cluster {chr(65 + i)} ({graph['community_sizes'][i]} pages): "
-                        + ", ".join(top_pages)
-                    )
-
-    if manifest["level"] in ("split_candidate", "hard_fail"):
-        lines.append(f"  >> DOMAIN SPLIT CANDIDATE (manifest trigger, level={manifest['level']})")
-
-    if merge.get("flag"):
-        lines.append(
-            f"  >> MERGE CANDIDATE: absorb into `{merge['target_domain']}` "
-            f"({merge['outbound_share']:.0%} of outbound links point there, "
-            f"only {merge['page_count']} pages, prose {merge['prose_tokens']} tok)"
-        )
-
-    return lines
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--domain", help="Run only for this domain")
-    args = parser.parse_args()
-
-    if not WIKI_ROOT.is_dir():
-        print(f"ERROR: {WIKI_ROOT} not found", file=sys.stderr)
-        return 2
-
-    domains = list_domains()
-    if not domains:
-        print("ERROR: no domain directories with _manifest.md found", file=sys.stderr)
-        return 2
-
-    if args.domain:
-        if args.domain not in domains:
-            print(f"ERROR: domain '{args.domain}' not in {domains}", file=sys.stderr)
-            return 2
-        domains = [args.domain]
-
-    page_domain = collect_all_page_domains()
-    page_counts = {d: len(collect_domain_pages(d)) for d in list_domains()}
-
-    any_hard_fail = False
-    report_lines = [f"Domain divergence scan — {len(domains)} domain(s)", ""]
-
-    for domain in domains:
-        manifest_result = run_manifest_trigger(domain)
-        graph_result = run_graph_trigger(domain, page_domain)
-        merge_result = run_merge_trigger(domain, manifest_result, page_domain, page_counts)
-        n_pages = page_counts.get(domain, 0)
-        report_lines.extend(format_report(domain, manifest_result, graph_result, merge_result, n_pages))
-        report_lines.append("")
-        if manifest_result["level"] == "hard_fail":
-            any_hard_fail = True
-
-    print("\n".join(report_lines))
-    return 1 if any_hard_fail else 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
-```
-
-### 7.6 `scripts/find-near-duplicates.sh`
-
-Uses the harness's keyword search tool (the reference uses `qmd`) to detect pages whose titles score suspiciously close to each other's. Catches the slow-rot pattern where two pages cover the same topic because an ingest's overlap-search came up empty. Skip this script if your harness has no search tool; substitute an equivalent that uses whatever is available.
+Contract for these scripts:
+
+- `build-registry.sh <domain>` regenerates only the registry block inside `wiki/<domain>/_manifest.md`.
+- `build-xrefs.py` regenerates global `wiki/xrefs.json` from slug-only wikilinks.
+- `check-wikilinks.py` fails on broken slug links or slug collisions.
+- `check-frontmatter-domain.py` fails when page `domain:` frontmatter does not match the parent domain directory.
+- `detect-domain-divergence.py` reports manifest pressure, graph-community split candidates, and conservative merge candidates; it never moves pages.
+- `find-near-duplicates.sh` is optional and adapter-backed; skip or replace it when no scoped search index exists.
+- `find-attachments.sh` maps raw source titles to local attachment files.
+
+Verify behavior rather than reproducing implementation text:
 
 ```bash
-#!/usr/bin/env bash
-# Find near-duplicate wiki pages via BM25 title search.
-#
-# Usage: scripts/find-near-duplicates.sh [ratio]
-#
-# For each page, search for its title. The page itself should rank #1.
-# If another page scores within `ratio` of the self-score (default 0.70),
-# flag the pair. Output: "score-ratio  self-score  other-score  page-a  <->  page-b"
-#
-# Uses the `qmd` BM25 search tool in the reference implementation; replace
-# with whatever keyword search your harness offers.
-
-set -euo pipefail
-
-ratio=${1:-0.70}
-script_dir=$(dirname -- "$0")
-cd -- "$script_dir/.."
-
-python3 - "$ratio" <<'PYEOF'
-import os, re, subprocess, sys
-
-ratio_threshold = float(sys.argv[1])
-domains = sorted(
-    name for name in os.listdir("wiki")
-    if os.path.isdir(os.path.join("wiki", name))
-    and not name.startswith(("_", "."))
-) if os.path.isdir("wiki") else []
-subdirs = ["sources", "entities", "concepts", "analyses"]
-title_re = re.compile(r'^title:\s*"?([^"\n]+?)"?\s*$', re.M)
-
-pairs = {}
-total = 0
-flagged = 0
-
-for domain in domains:
-    collection = f"vault-{domain}"
-    for sub in subdirs:
-        d = os.path.join("wiki", domain, sub)
-        if not os.path.isdir(d):
-            continue
-        for fname in sorted(os.listdir(d)):
-            if not fname.endswith(".md"):
-                continue
-            total += 1
-            path = os.path.join(d, fname)
-            slug = os.path.splitext(fname)[0]
-            with open(path, encoding="utf-8") as f:
-                content = f.read(2000)
-            m = title_re.search(content)
-            if not m:
-                continue
-            title = m.group(1).strip()
-
-            try:
-                r = subprocess.run(
-                    ["qmd", "search", title, "-c", collection, "-n", "5", "--files"],
-                    capture_output=True, text=True, timeout=15
-                )
-            except (subprocess.TimeoutExpired, FileNotFoundError):
-                continue
-
-            results = []
-            for line in r.stdout.splitlines():
-                parts = line.split(",", 3)
-                if len(parts) < 3 or not parts[0].startswith("#"):
-                    continue
-                try:
-                    score = float(parts[1])
-                except ValueError:
-                    continue
-                other_slug = os.path.splitext(os.path.basename(parts[2]))[0]
-                results.append((other_slug, score))
-
-            if not results:
-                continue
-            self_score = next((s for slg, s in results if slg == slug), None)
-            if self_score is None or self_score <= 0:
-                continue
-
-            for other_slug, other_score in results:
-                if other_slug == slug:
-                    continue
-                r_val = other_score / self_score
-                if r_val < ratio_threshold:
-                    continue
-                pair = tuple(sorted([slug, other_slug]))
-                if pair not in pairs or r_val > pairs[pair][0]:
-                    pairs[pair] = (r_val, self_score, other_score)
-
-for pair, (r_val, s, o) in sorted(pairs.items(), key=lambda x: -x[1][0]):
-    flagged += 1
-    print(f"{r_val:.2f}  self={s:.2f}  other={o:.2f}  {pair[0]}  <->  {pair[1]}")
-
-print(f"\nScanned {total} pages, flagged {flagged} suspicious pairs (ratio >= {ratio_threshold})", file=sys.stderr)
-PYEOF
-```
-
-### 7.7 `scripts/find-attachments.sh`
-
-Given an asset name, finds matching attachment files in `raw/attachments/<title>/`. Used during ingest to locate locally-saved images for a clipped web page.
-
-```bash
-#!/usr/bin/env bash
-# Find attachment directories in raw/attachments/ matching an asset's title.
-#
-# Usage: scripts/find-attachments.sh <asset-path-or-title>
-#
-# Accepts either a full path (raw/assets/Foo.md) or a bare title (Foo).
-# Strips extension and directory, then looks for an exact-match directory
-# under raw/attachments/. Prints absolute paths to every file inside, one
-# per line. Exits 0 even if no match is found.
-
-set -euo pipefail
-
-if [ $# -lt 1 ]; then
-  echo "usage: $0 <asset-path-or-title>" >&2
-  exit 2
-fi
-
-input=$1
-base=$(basename -- "$input")
-title=${base%.*}
-
-script_dir=$(dirname -- "$0")
-cd -- "$script_dir/.."
-repo_root=$(pwd)
-attach_dir=$repo_root/raw/attachments/$title
-
-if [ ! -d "$attach_dir" ]; then
-  exit 0
-fi
-
-find "$attach_dir" -type f -print | sort
+bash -n scripts/*.sh
+python3 scripts/check-wikilinks.py
+python3 scripts/check-frontmatter-domain.py
+python3 scripts/detect-domain-divergence.py
 ```
 
 ## Step 8 — Verify the build
@@ -1700,7 +765,7 @@ Structural rules that scripts enforce. Violating any is a lint failure.
 8. The fenced REGISTRY block is never edited by hand.
 9. No `_meta` directory — cross-cutting topics live in their primary domain and are linked from anywhere.
 10. No page is duplicated across domains.
-11. `raw/` is never modified — sources are immutable.
+11. Raw source contents are immutable. The allowed mutation is moving processed inbox files from `raw/assets/` to `raw/archived/`.
 
 ## 7. Git Workflow
 
@@ -1815,13 +880,13 @@ Move or delete its pages (`git mv` preserves history), `rm -rf wiki/<name>/`, re
 
 ## 1. What This File Is, and Is Not
 
-**This file is** a portable, harness-agnostic build-and-operate program for a domain-atomized LLM Wiki. An LLM in any harness — with any set of file-read, file-write, shell, and (ideally) web-fetch tools — should be able to read this file and:
+**This file is** a portable, harness-agnostic build-and-operate contract for a domain-atomized LLM Wiki. An LLM in any harness — with this reference repository plus file-read, file-write, shell, and (ideally) web-fetch tools — should be able to read this file and:
 
-1. Bootstrap the wiki from an empty directory (Part I)
+1. Bootstrap a target vault from the reference repo (Part I)
 2. Operate it day-to-day (Part II)
 3. Evolve its shape as it grows (Part III)
 
-**This file is not** a tutorial, a user manual, or a theoretical defense of the design. The accompanying reference repository includes `SPEC.md` (architectural rationale), `CLAUDE.md` (a worked example of these rules translated into the Claude Code harness), and a `.claude/skills/` directory (skill files showing how individual operations are implemented for that harness). If you have access to those files and the task demands it, read them. If you do not, this file is sufficient.
+**This file is not** a standalone artifact dump, tutorial, user manual, or theoretical defense of the design. The accompanying reference repository is part of the contract and includes `SPEC.md` (architectural rationale), `scripts/` (canonical verification and generation tools), `CLAUDE.md` (a worked example of these rules translated into the Claude Code harness), and a `.claude/skills/` directory (skill files showing how individual operations are implemented for that harness).
 
 ## 2. Harness Portability
 
@@ -1846,7 +911,7 @@ After bootstrap, the human will almost certainly want to add vault-specific rule
 
 | Situation | Action |
 |---|---|
-| Empty directory, need to start | Part I, Steps 1-9 |
+| New target vault, need to start | Part I, Steps 1-9 |
 | New source in the inbox | Part II §2 (ingest) |
 | Question from the human | Part II §3 (query) |
 | Structural lint | Part II §4.2 |
