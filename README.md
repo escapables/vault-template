@@ -181,6 +181,16 @@ This is a git-versioned vault. **Anything committed to `wiki/` enters git histor
 - Force-pushing to rewrite history is rarely clean — GitHub caches forks and PRs for days, mirrors may exist, pre-rewrite clones keep the old history. See [GitHub's docs on removing sensitive data](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository) before attempting one.
 - The split between a private working vault and a public template is intentional. Run your personal vault in a private repo; copy the schema out into a public repo (or fork this template) rather than sanitizing the private one retroactively.
 
+## Acknowledgments
+
+This template stands on two gists:
+
+- **[Andrej Karpathy's LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)** (April 2026) — the canonical pattern. The three-layer architecture (`raw/` / `wiki/` / schema), the three operations (ingest / query / lint), the "stop re-deriving, start compiling" framing, and the Obsidian + git substrate are all from here. Karpathy's core observation, preserved throughout: *"the tedious part of maintaining a knowledge base is not the reading or the thinking — it's the bookkeeping,"* and LLMs eliminate that bookkeeping cost. Everything architectural in this template is a domain-atomized evolution of Karpathy's pattern, not a departure from it.
+
+- **[rohitg00's LLM Wiki v2](https://gist.github.com/rohitg00/2067ab416f7bbe447c1977edaaa681e2)** (April 2026) — a production-lessons extension essay from the author of the [`agentmemory`](https://github.com/rohitg00/agentmemory) engine. The eleven-theme extension list (memory lifecycle, event-driven automation, privacy filtering, quality scoring, crystallization, schema-as-product, and more) is the roadmap input for this template's v2-derived features in the Roadmap section above — most notably supersession, ingest-time PII scrub, and the extended hook taxonomy.
+
+Everything else in this template — domain atomization, manifest-first reading, progressive disclosure, `xrefs.json`, derived analytics, git maintenance hooks, the portable contract in [`PROGRAM.md`](PROGRAM.md) — is downstream synthesis of these two gists. If either gist is useful to you, read them directly; this repo is the reference implementation of one particular reading of both.
+
 ## License
 
 MIT — see [`LICENSE`](LICENSE). The schema, scripts, and structural patterns are published in case they are useful for other wikis hitting the same scaling wall. Content in a personal vault is personal research notes; this template ships with none.
