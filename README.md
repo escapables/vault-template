@@ -108,11 +108,28 @@ At ~250+ pages, the largest remaining read cost is in-domain queries about dense
 
 Views must be regenerated reliably — stale views are worse than no views. Deferred until wiki size makes the manual-read cost painful; at smaller scales the complexity is not worth the savings.
 
+### From LLM Wiki v2
+
+[rohitg00's LLM Wiki v2 gist](https://gist.github.com/rohitg00/2067ab416f7bbe447c1977edaaa681e2) is an extension essay on Karpathy's original pattern — eleven production-lesson patches distilled from building the `agentmemory` engine across thousands of sessions. Most themes already map cleanly onto this template (hybrid search is opt-in via `qmd`, schema-as-product is the entire thesis of `PROGRAM.md`, analytics hooks are Phase 1). Three patches are genuinely additive and worth pulling into the roadmap:
+
+- **Supersession convention** — `superseded_by:` / `supersedes:` frontmatter fields + an inverse-link check in `scripts/check-wikilinks.py` + a `/health` rule that routes inbound links to the replacement page. The cheapest lifecycle primitive from v2's memory-lifecycle layer (~2 hours to implement), and it pays off cumulatively as the wiki grows: facts that turn out to be wrong, rewritten pages, and deprecated tools all have a machine-readable trail instead of a prose note. Composes with Phase 1 analytics — superseded pages surface as a "stale inventory" line in each domain's analytics block and stop absorbing inbound links in the cross-reference map.
+
+- **Ingest-time PII scrub** — `scripts/pii-scrub.py` runs on each raw source before its content enters `wiki/`, matching obvious credentials (API keys, bearer tokens, JWT fragments, SSH private-key headers, common high-entropy patterns) and flagging potential PII for human review. The `raw/` file itself stays immutable; the scrub is a gate on what the LLM copies into committed wiki pages, not a rewriter of sources. Complements the existing "A note on privacy" section above and makes the "public template, personal research" split safer in practice, not just in prose.
+
+- **Extended hook taxonomy** — v2 lists six hook categories: *on new source / session start / session end / query / memory write / schedule*. Phase 1 already covers *memory write* via the post-commit / post-checkout hooks. Three more categories are worth adding as optional adapter-local scripts: a session-start manifest-preload hook (drop the first-read cost on returning sessions), a session-end session-summary hook (compress the current chat into a log entry on exit), and a scheduled stale-load-bearing reminder via `cron` or systemd timer. Harness-specific; kept in `scripts/adapters/` as examples rather than in the portable core path.
+
+The remaining v2 themes are filed in "Deferred / optional" below. None of them are load-bearing until the template hits ~200–300 pages in real deployments — at the small-and-medium scale this template targets, supersession + PII scrub + the extended hooks are the full payoff from v2.
+
 ### Deferred / optional
 
 - **Confidence-tagged wikilinks** — mark inferred or unverified links; helps provenance tracking at 200+ pages
 - **Cross-collection search wrapper** — one-shot search across multiple domain collections, useful when cross-domain queries become regular
 - **Skip-list for derivative sources** — detect when a new source overlaps with an already-ingested one and surface existing coverage before re-reading
+- **Confidence scoring per page** (v2) — continuous per-page trust score weighted by source count × recency × contradiction pressure. Calibration-heavy and continuous-valued, so hard to land well; defer until supersession is in place and provides a discrete baseline to build on.
+- **Retention decay** (v2) — per-page `retention_class:` frontmatter (`architectural | operational | transient`) + a background sweep that deprioritises stale pages in search rankings. Meaningful only at sizes where stale-page cost dominates curation cost; the essay's own framing is "architecture decisions decay slowly, transient bugs decay fast," which is a shape, not a formula.
+- **Four-tier consolidation pipeline** (v2) — explicit *working → episodic → semantic → procedural* promotion machinery. The template already has each of the four surfaces (`raw/` → `log.md` → `concepts/` → `CLAUDE.md`), but promotion between them is manual today. Automating it is framework-level work, not a single script.
+- **Crystallization fact extraction** (v2) — auto-distill completed chains (a debugging session, a research thread, an analysis) into a first-class wiki page *and* extract the transferable lessons as standalone facts carrying confidence scores. Requires confidence scoring as a substrate; defer until that lands.
+- **Quality scoring for LLM writes** (v2) — per-page quality score (structure, citations, consistency, contradictions against the existing wiki) with a sub-threshold flag-or-rewrite path. Calibration and subjectivity make this the hardest lifecycle primitive to land well; defer until there is a large enough corpus of LLM-authored pages to calibrate against.
 - **Opt-in hybrid-recall search for overlap and contradiction scans** — keep scoped mechanical search as the default (`rg` or `qmd search`). If the human explicitly enables hybrid/vector search, an adapter can use something like `qmd query --no-rerank` for ingest overlap and deep-health contradiction scans. Warn first: this mode can load local GGUF models, use significant RAM, run slowly on CPU-only machines, and use GPU/VRAM if available. The payoff is semantic recall for paraphrases and synonyms that BM25 can miss, but it is not part of the portable core path.
 
 ---
